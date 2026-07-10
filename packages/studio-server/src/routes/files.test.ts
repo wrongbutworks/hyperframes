@@ -45,6 +45,36 @@ function createAdapter(projectDir: string): StudioApiAdapter {
 }
 
 describe("registerFileRoutes", () => {
+  it("returns a clean 400 for an invalid GSAP writer flag", async () => {
+    const previous = process.env.HYPERFRAMES_GSAP_WRITER;
+    process.env.HYPERFRAMES_GSAP_WRITER = "true";
+    try {
+      const projectDir = createProjectDir();
+      writeFileSync(
+        join(projectDir, "index.html"),
+        '<div id="box"></div><script>const tl = gsap.timeline(); tl.to("#box", { x: 10 });</script>',
+      );
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+
+      const response = await app.request(
+        "http://localhost/projects/demo/gsap-mutations/index.html",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "shift-positions", targetSelector: "#box", delta: 1 }),
+        },
+      );
+      const payload = (await response.json()) as { error?: string };
+
+      expect(response.status).toBe(400);
+      expect(payload.error).toContain("expected recast or acorn");
+    } finally {
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_WRITER;
+      else process.env.HYPERFRAMES_GSAP_WRITER = previous;
+    }
+  });
+
   it("returns empty content for missing files when caller marks the read optional", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

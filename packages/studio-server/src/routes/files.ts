@@ -51,6 +51,10 @@ import {
   unrollDynamicAnimations,
   setArcPathInScript,
   updateArcSegmentInScript,
+  updateMotionPathPointInScript,
+  addMotionPathPointInScript,
+  removeMotionPathPointInScript,
+  addMotionPathToScript,
   removeArcPathFromScript,
   addAnimationWithKeyframesToScript,
   splitAnimationsInScript,
@@ -58,6 +62,7 @@ import {
   shiftPositionsInScript,
   scalePositionsInScript,
   dedupePositionWritesInScript,
+  syncPositionHoldsBeforeKeyframes,
 } from "@hyperframes/parsers/gsap-writer-acorn";
 import {
   removeElementFromHtml,
@@ -71,26 +76,18 @@ import {
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
 import { parseHTML } from "linkedom";
+import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
 /**
- * Mirror of the client STUDIO_SDK_CUTOVER_ENABLED flag for server-side writer
- * selection. When true, the acorn writer handles GSAP mutations; otherwise the
- * recast writer (gsapParser.ts) is used. Default false → recast.
- *
- * Enable with: STUDIO_SDK_CUTOVER_ENABLED=true (or =1)
- * Mirrors the client Vite env var name so one env switch flips both sides.
+ * Writer selection is deliberately independent from the Studio SDK cutover.
+ * Recast remains the default until the capability report has no parity blockers.
  */
-function isAcornGsapWriterEnabled(): boolean {
-  const val = process.env["STUDIO_SDK_CUTOVER_ENABLED"];
-  return val === "true" || val === "1";
-}
-
 /**
  * Lazy-load gsapParser for write ops (recast-backed) — the default server writer.
  * The read path uses the browser-safe acorn parser; this loader is only needed
- * for the recast write path (the default when STUDIO_SDK_CUTOVER_ENABLED is off).
+ * for the recast write path (the default until the migration gate graduates).
  */
 async function loadGsapParser() {
   return import("@hyperframes/parsers/gsap-parser-recast");
@@ -563,7 +560,7 @@ function bakeVisibilityOnDelete(document: Document, anim: GsapAnimation): void {
 
 // ── GSAP mutation types ─────────────────────────────────────────────────────
 
-type GsapMutationRequest =
+export type GsapMutationRequest =
   | {
       type: "update-property";
       animationId: string;
@@ -832,10 +829,11 @@ async function executeGsapMutation(
   body: GsapMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
   respond: (data: unknown, status?: number) => Response,
+  writer: "recast" | "acorn",
 ): Promise<GsapMutationResult | Response> {
   // When the server cutover flag is enabled, delegate to the acorn writer;
   // otherwise use the recast writer (gsapParser.ts) as the default.
-  if (!isAcornGsapWriterEnabled()) {
+  if (writer === "recast") {
     return executeGsapMutationRecast(body, block, respond);
   }
   return executeGsapMutationAcorn(body, block, respond);
@@ -899,6 +897,14 @@ function executeGsapMutationAcorn(
     case "add": {
       if (body.fromProperties && body.method !== "fromTo") {
         return respond({ error: "fromProperties is only valid for method=fromTo" }, 400);
+      }
+      if (
+        Object.keys(body.properties).some((key) => {
+          const group = classifyPropertyGroup(key);
+          return group === "position" || group === "rotation";
+        })
+      ) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
       }
       const result = addAnimationToScript(block.scriptText, {
         targetSelector: body.targetSelector,
@@ -1037,10 +1043,38 @@ function executeGsapMutationAcorn(
         ...(body.cp2 ? { cp2: body.cp2 } : {}),
       });
     }
+    case "update-motion-path-point": {
+      return updateMotionPathPointInScript(block.scriptText, body.animationId, body.pointIndex, {
+        x: body.x,
+        y: body.y,
+      });
+    }
+    case "add-motion-path-point": {
+      return addMotionPathPointInScript(block.scriptText, body.animationId, body.index, {
+        x: body.x,
+        y: body.y,
+      });
+    }
+    case "remove-motion-path-point": {
+      return removeMotionPathPointInScript(block.scriptText, body.animationId, body.index);
+    }
+    case "add-motion-path": {
+      return addMotionPathToScript(
+        block.scriptText,
+        body.targetSelector,
+        body.position,
+        body.duration,
+        { x: body.x, y: body.y },
+        body.ease,
+      ).script;
+    }
     case "remove-arc-path": {
       return removeArcPathFromScript(block.scriptText, body.animationId);
     }
     case "add-with-keyframes": {
+      if (keyframesWritePosition(body.keyframes) || keyframesWriteRotation(body.keyframes)) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const result = addAnimationWithKeyframesToScript(
         block.scriptText,
         body.targetSelector,
@@ -1053,6 +1087,9 @@ function executeGsapMutationAcorn(
       return result.script;
     }
     case "replace-with-keyframes": {
+      if (keyframesWritePosition(body.keyframes) || keyframesWriteRotation(body.keyframes)) {
+        stripStudioEditsFromTarget(block.document, body.targetSelector);
+      }
       const script = removeAnimationFromScript(block.scriptText, body.animationId);
       const added = addAnimationWithKeyframesToScript(
         script,
@@ -1407,6 +1444,7 @@ async function executeGsapMutationRecast(
         body.duration,
         body.keyframes,
         body.ease,
+        body.easeEach,
       );
       return result.script;
     }
@@ -2117,7 +2155,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bridge between generic status and Hono's literal union
       status ? c.json(data, status as any) : c.json(data);
 
-    const result = await executeGsapMutation(body, block, respond);
+    let writer: "recast" | "acorn";
+    try {
+      writer = resolveGsapWriter(process.env);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+    const result = await executeGsapMutation(body, block, respond, writer);
     if (result instanceof Response) return result;
 
     let newScript = typeof result === "string" ? result : result.script;
@@ -2126,8 +2170,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     // element snaps to its CSS base before the tween starts instead of holding its
     // first keyframe (the universal NLE behavior).
     if (HOLD_SYNC_MUTATION_TYPES.has(body.type)) {
-      const parser = await loadGsapParser();
-      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
+      newScript =
+        writer === "acorn"
+          ? syncPositionHoldsBeforeKeyframes(newScript)
+          : (await loadGsapParser()).syncPositionHoldsBeforeKeyframes(newScript);
     }
     const changed = newScript !== block.scriptText;
     const newHtml = changed ? block.replaceScript(newScript) : html;
