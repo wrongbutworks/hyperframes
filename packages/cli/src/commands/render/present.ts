@@ -6,6 +6,8 @@ import { c } from "../../ui/colors.js";
 import type { RenderPlan } from "./plan.js";
 
 /** Present warnings and the human render plan. JSON batch output stays silent. */
+// This phase intentionally owns every mutually exclusive human-output branch.
+// fallow-ignore-next-line complexity
 export async function presentRenderPlan(plan: RenderPlan): Promise<void> {
   if (plan.invalidAuthoringSkill) {
     process.stderr.write(

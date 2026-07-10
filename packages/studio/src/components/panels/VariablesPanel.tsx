@@ -30,7 +30,7 @@ function shellSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-interface VariablesPanelProps {
+export interface StudioEditPersistenceProps {
   sdkSession: Composition | null;
   publishSdkSession: (session: Composition) => void;
   reloadPreview: () => void;
@@ -41,6 +41,8 @@ interface VariablesPanelProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
 }
+
+type VariablesPanelProps = StudioEditPersistenceProps;
 
 function formatIssue(issue: VariableValidationIssue): string {
   switch (issue.kind) {

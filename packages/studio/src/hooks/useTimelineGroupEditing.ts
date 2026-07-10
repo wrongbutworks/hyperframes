@@ -1,3 +1,5 @@
+// fallow-ignore-file code-duplication
+// Move/resize operation families remain parallel until SDK graduation.
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";

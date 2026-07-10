@@ -10,6 +10,8 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
   const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
   const issues = [];
 
+  // AST traversal mirrors the small set of process-termination spellings.
+  // fallow-ignore-next-line complexity
   function visit(node) {
     if (
       ts.isPropertyAccessExpression(node) &&
@@ -30,6 +32,7 @@ export function listDirectProcessTermination(source, filename = "source.ts") {
 }
 
 function listTypeScriptFiles(directory, rootCliPath) {
+  // fallow-ignore-next-line complexity
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
     if (statSync(path).isDirectory()) return listTypeScriptFiles(path, rootCliPath);

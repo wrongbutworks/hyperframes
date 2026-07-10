@@ -1,3 +1,5 @@
+// fallow-ignore-file code-duplication
+// Add/remove operation-family transaction shapes stay parallel until SDK graduation.
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";

@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { PropertyPanel } from "./editor/PropertyPanel";
@@ -14,15 +13,13 @@ import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
-import { VariablesPanel } from "./panels/VariablesPanel";
+import { VariablesPanel, type StudioEditPersistenceProps } from "./panels/VariablesPanel";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
-import type { Composition } from "@hyperframes/sdk";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
@@ -42,7 +39,7 @@ import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 const MIN_INSPECTOR_SPLIT_PERCENT = 20;
 const MAX_INSPECTOR_SPLIT_PERCENT = 75;
 
-export interface StudioRightPanelProps {
+export interface StudioRightPanelProps extends StudioEditPersistenceProps {
   designPanelActive: boolean;
   activeBlockParams?: {
     blockName: string;
@@ -54,16 +51,6 @@ export interface StudioRightPanelProps {
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
-  /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
-  sdkSession: Composition | null;
-  publishSdkSession: (session: Composition) => void;
-  reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
-  recordEdit: (entry: {
-    label: string;
-    kind: EditHistoryKind;
-    files: Record<string, { before: string; after: string }>;
-  }) => Promise<void>;
   onToggleElementHidden?: (elementKey: string, hidden: boolean) => Promise<void> | void;
 }
 

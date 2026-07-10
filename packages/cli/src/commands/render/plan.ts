@@ -432,6 +432,8 @@ export function renderOutputDirectory(plan: RenderPlan): string {
 }
 
 /** Resolve browser GPU mode from Docker, CLI, env, then the auto default. */
+// Re-exported by render.ts to preserve its tested public seam.
+// fallow-ignore-next-line unused-export
 export function resolveBrowserGpuForCli(
   useDocker: boolean,
   browserGpuArg: boolean | undefined,

@@ -270,6 +270,7 @@ const commandStart = Date.now();
 const runId = getRunId();
 let finalized = false;
 
+// Root-only lifecycle fan-in: telemetry, notices, flushing, then exit code.
 // fallow-ignore-next-line complexity
 async function finalizeCli(result: CommandResult): Promise<void> {
   if (finalized) return;
@@ -371,6 +372,8 @@ function commandResultForError(error: unknown): CommandResult {
   return { exitCode: 1, kind: "runtime_error" };
 }
 
+// Root-only command boundary; keeping every result path here prevents modules
+// from bypassing output, telemetry, or finalizers.
 // fallow-ignore-next-line complexity
 async function executeCli(): Promise<void> {
   let result: CommandResult = { exitCode: 0, kind: "success" };

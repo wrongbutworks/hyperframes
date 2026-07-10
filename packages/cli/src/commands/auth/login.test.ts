@@ -1,8 +1,8 @@
 import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readStore, writeStore } from "../../auth/store.js";
+import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
 import { CliRuntimeError } from "../../utils/commandResult.js";
 
 // Mock only AuthClient — keep the real store/resolver so the test
@@ -43,19 +43,13 @@ const telemetry = vi.hoisted(() => ({
 }));
 vi.mock("../../telemetry/index.js", () => telemetry);
 
-const ENV_KEYS = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_CONFIG_DIR"] as const;
-
 describe("auth login --api-key rollback", () => {
   let dir: string;
-  const saved: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
+  let envFixture: EnvFixture;
 
   beforeEach(async () => {
-    dir = await fs.mkdtemp(join(tmpdir(), "hf-login-"));
-    for (const k of ENV_KEYS) {
-      saved[k] = process.env[k];
-      delete process.env[k];
-    }
-    process.env["HEYGEN_CONFIG_DIR"] = dir;
+    envFixture = await setupTempAuthEnv("hf-login-");
+    dir = envFixture.dir;
     verifyState.reject = false;
     verifyState.user = { email: "alice@example.com" };
     for (const fn of Object.values(telemetry)) fn.mockClear();
@@ -65,12 +59,7 @@ describe("auth login --api-key rollback", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
-    for (const k of ENV_KEYS) {
-      const v = saved[k];
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-    await fs.rm(dir, { recursive: true, force: true });
+    await envFixture.restore();
   });
 
   async function runLogin(apiKey: string): Promise<void> {

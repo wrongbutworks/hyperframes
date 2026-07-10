@@ -528,6 +528,18 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
 
 // ── render ──────────────────────────────────────────────────────────────────
 
+function resolveCloudRunFps(
+  args: Record<string, unknown>,
+  projectDir: string,
+  command: "render" | "render-batch",
+): 24 | 30 | 60 {
+  const fps =
+    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
+  if (fps === 24 || fps === 30 || fps === 60) return fps;
+  console.error(`[cloudrun ${command}] --fps must be 24, 30, or 60; got ${fps}.`);
+  failCommand();
+}
+
 // fallow-ignore-next-line complexity
 async function runRender(args: Record<string, unknown>): Promise<void> {
   const projectDir = args.target as string | undefined;
@@ -543,12 +555,7 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun render] --width and --height are required.");
     failCommand();
   }
-  const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps !== 24 && fps !== 30 && fps !== 60) {
-    console.error(`[cloudrun render] --fps must be 24, 30, or 60; got ${fps}.`);
-    failCommand();
-  }
+  const fps = resolveCloudRunFps(args, projectDir, "render");
   const state = readState(args);
   const variables = resolveAndValidateVariables(args, resolve(projectDir));
   const config = buildRenderConfig(args, fps, width, height, variables);
@@ -654,12 +661,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun render-batch] --width and --height are required.");
     failCommand();
   }
-  const fps =
-    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
-  if (fps !== 24 && fps !== 30 && fps !== 60) {
-    console.error(`[cloudrun render-batch] --fps must be 24, 30, or 60; got ${fps}.`);
-    failCommand();
-  }
+  const fps = resolveCloudRunFps(args, projectDir, "render-batch");
   if (!existsSync(resolve(batchPath))) {
     console.error(`[cloudrun render-batch] batch file not found: ${batchPath}`);
     failCommand();
