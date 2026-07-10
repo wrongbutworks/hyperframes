@@ -987,9 +987,12 @@ async function runDetachedParent(
         JSON.stringify({ ok: false, error: "preview did not report ready", log: paths.log }),
       );
     } else {
-      const tail = existsSync(paths.log)
-        ? readFileSync(paths.log, "utf-8").trimEnd().split("\n").slice(-12).join("\n")
-        : "";
+      let tail = "";
+      try {
+        tail = readFileSync(paths.log, "utf-8").trimEnd().split("\n").slice(-12).join("\n");
+      } catch {
+        // No log yet — the child died before writing anything.
+      }
       console.error();
       if (tail) console.error(tail);
       console.error();
