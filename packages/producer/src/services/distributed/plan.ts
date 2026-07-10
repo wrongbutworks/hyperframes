@@ -195,6 +195,8 @@ export interface DistributedRenderConfig {
   cfr?: boolean;
 
   logger?: ProducerLogger;
+  /** JSON-safe engine snapshot carried across cloud/process boundaries. */
+  engineConfig?: EngineConfig;
   /** Optional engine config override (env vars are not read when provided). */
   producerConfig?: EngineConfig;
   /** Entry HTML file relative to `projectDir`. Defaults to `"index.html"`. */
@@ -723,7 +725,7 @@ export async function plan(
     }
   };
   const cfg: EngineConfig = {
-    ...(config.producerConfig ?? resolveConfig()),
+    ...(config.producerConfig ?? config.engineConfig ?? resolveConfig()),
     browserGpuMode: "software",
     forceScreenshot: false,
   };
@@ -741,7 +743,7 @@ export async function plan(
     hdrMode: config.hdrMode ?? "force-sdr",
     entryFile: config.entryFile ?? "index.html",
     logger: config.logger,
-    producerConfig: config.producerConfig,
+    producerConfig: cfg,
   });
   const entryFile = config.entryFile ?? "index.html";
   const htmlPath = join(projectDir, entryFile);

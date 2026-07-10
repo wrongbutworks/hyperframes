@@ -203,6 +203,9 @@ export function validateDistributedRenderConfig(
   if (config.variables !== undefined) {
     validateVariablesPayload(config.variables);
   }
+  if (config.engineConfig !== undefined) {
+    walkVariables(config.engineConfig, "config.engineConfig", new WeakSet());
+  }
 
   return config;
 }

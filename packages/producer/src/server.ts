@@ -44,6 +44,7 @@ import { resolveRenderPaths } from "./utils/paths.js";
 import { defaultLogger, type ProducerLogger } from "./logger.js";
 import { Semaphore } from "./utils/semaphore.js";
 import { parseFps, normalizeResolutionFlag, type CanvasResolution } from "@hyperframes/core";
+import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -194,21 +195,25 @@ function parseRenderOverrides(body: Record<string, unknown>): {
  * the sync (`render`) and streaming (`render-stream`) handlers so the field
  * set — including `variables` and `outputResolution` — stays in one place.
  */
-function buildRenderJobConfig(input: RenderInput, log: ProducerLogger) {
-  return {
-    fps: input.fps,
-    quality: input.quality,
-    format: input.format,
-    workers: input.workers,
-    useGpu: input.useGpu,
-    debug: input.debug,
-    strictness: input.strictness,
-    entryFile: input.entryFile,
-    variables: input.variables,
-    outputResolution: input.outputResolution,
-    videoFrameFormat: input.videoFrameFormat,
-    logger: log,
-  };
+function buildRenderJobConfig(input: RenderInput, outputPath: string, log: ProducerLogger) {
+  const request = createRenderRequest({
+    projectDir: input.projectDir,
+    outputPath,
+    options: {
+      fps: input.fps,
+      quality: input.quality,
+      format: input.format ?? "mp4",
+      workers: input.workers,
+      useGpu: input.useGpu,
+      debug: input.debug,
+      strictness: input.strictness,
+      entryFile: input.entryFile,
+      variables: input.variables,
+      outputResolution: input.outputResolution,
+      videoFrameFormat: input.videoFrameFormat,
+    },
+  });
+  return renderConfigFromRequest(request, { logger: log });
 }
 
 /**
@@ -614,7 +619,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       quality: input.quality,
     });
 
-    const job = createRenderJob(buildRenderJobConfig(input, log));
+    const job = createRenderJob(buildRenderJobConfig(input, absoluteOutputPath, log));
 
     try {
       await executeRenderJob(
@@ -690,7 +695,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 
       log.info("render-stream started", { requestId, projectDir: input.projectDir });
 
-      const job = createRenderJob(buildRenderJobConfig(input, log));
+      const job = createRenderJob(buildRenderJobConfig(input, absoluteOutputPath, log));
       const abortController = new AbortController();
       const onRequestAbort = () =>
         abortController.abort(new RenderCancelledError("request_aborted"));
