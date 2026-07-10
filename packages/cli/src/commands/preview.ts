@@ -5,6 +5,8 @@ import type { Readable } from "node:stream";
 
 export const examples: Example[] = [
   ["Preview the current project", "hyperframes preview"],
+  ["Start detached — returns once serving, server keeps running", "hyperframes preview --detach"],
+  ["Stop the preview server for this project", "hyperframes preview --stop"],
   ["Print the current Studio selection as JSON", "hyperframes preview --selection --json"],
   ["Print current Studio context as JSON", "hyperframes preview --context --json"],
   ["Preview a specific project directory", "hyperframes preview ./my-video"],
@@ -19,7 +21,18 @@ export const examples: Example[] = [
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
 ];
-import { existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync, mkdirSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -44,6 +57,15 @@ import {
 } from "../server/portUtils.js";
 import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 import { resolveProject } from "../utils/project.js";
+import {
+  clearServerState,
+  detachedShutdownReason,
+  previewStatePaths,
+  processAlive,
+  resolveIdleLimitMs,
+  waitForServerState,
+  writeServerState,
+} from "../server/detachedPreview.js";
 
 interface BrowserLaunchOptions {
   noOpen?: boolean;
@@ -58,6 +80,8 @@ interface StudioLaunchOptions extends BrowserLaunchOptions {
 
 interface EmbeddedStudioOptions extends StudioLaunchOptions {
   forceNew?: boolean;
+  /** Present when this process is the child of `preview --detach`. */
+  detached?: { launchId: string; ownerPid: number | null };
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -87,6 +111,26 @@ export default defineCommand({
     "force-new": {
       type: "boolean",
       description: "Start a new server even if one is already running for this project",
+      default: false,
+    },
+    detach: {
+      type: "boolean",
+      description:
+        "Start the server detached from this command — returns once it's serving and prints the URL; the server shuts itself down after an idle hour",
+      default: false,
+    },
+    stop: {
+      type: "boolean",
+      description: "Stop the preview server for this project and exit",
+      default: false,
+    },
+    "owner-pid": {
+      type: "string",
+      description: "(with --detach) shut the server down when this process exits",
+    },
+    "detached-child": {
+      type: "boolean",
+      description: "(internal) run as the server child of --detach",
       default: false,
     },
     list: {
@@ -177,6 +221,33 @@ export default defineCommand({
       return;
     }
 
+    // --stop: kill the server(s) for this project only
+    if (args.stop) {
+      const project = resolveProject(args.dir);
+      const normalize = (p: string) => resolve(p).replace(/\\/g, "/").toLowerCase();
+      const servers = (await scanActiveServers(startPort)).filter(
+        (s) => normalize(s.projectDir) === normalize(project.dir),
+      );
+      if (servers.length === 0) {
+        console.log("\n  No preview server running for this project.\n");
+        return;
+      }
+      let stopped = 0;
+      for (const server of servers) {
+        if (!server.pid) continue;
+        try {
+          process.kill(parseInt(server.pid, 10), "SIGTERM");
+          stopped++;
+        } catch {
+          // Already gone.
+        }
+      }
+      console.log(
+        `\n  Stopped ${stopped} preview server${stopped === 1 ? "" : "s"} for ${project.name}.\n`,
+      );
+      return;
+    }
+
     if (args.context) {
       const project = resolveProject(args.dir);
       return printCurrentContext(project.dir, startPort, {
@@ -251,28 +322,52 @@ export default defineCommand({
       return;
     }
 
-    if (isDevMode()) {
-      return runDevMode(dir, {
-        projectName,
-        noOpen,
-        browserPath,
-        userDataDir,
-        remoteDebuggingPort,
-      });
+    const detachedChild = !!args["detached-child"];
+    const rawOwnerPid = args["owner-pid"] as string | undefined;
+    const ownerPid = rawOwnerPid === undefined ? null : Number.parseInt(rawOwnerPid, 10);
+    if (rawOwnerPid !== undefined && (!Number.isInteger(ownerPid) || (ownerPid as number) <= 1)) {
+      clack.log.error("--owner-pid must be an integer greater than 1");
+      process.exitCode = 1;
+      return;
     }
 
-    // If @hyperframes/studio is installed locally, use Vite for full HMR
-    if (hasLocalStudio(dir)) {
-      return runLocalStudioMode(dir, {
-        projectName,
-        noOpen,
-        browserPath,
-        userDataDir,
-        remoteDebuggingPort,
-      });
+    // The detached child always serves embedded — the parent only spawns it
+    // after ruling the Vite modes out.
+    if (!detachedChild) {
+      if (isDevMode() || hasLocalStudio(dir)) {
+        if (args.detach) {
+          clack.log.warn(
+            "--detach only supports the embedded studio — starting in the foreground.",
+          );
+        }
+        const launchOptions = {
+          projectName,
+          noOpen,
+          browserPath,
+          userDataDir,
+          remoteDebuggingPort,
+        };
+        return isDevMode()
+          ? runDevMode(dir, launchOptions)
+          : runLocalStudioMode(dir, launchOptions);
+      }
     }
 
     const forceNew = !!args["force-new"];
+
+    if (args.detach && !detachedChild) {
+      return runDetachedParent(dir, startPort, {
+        projectName,
+        forceNew,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+        ownerPid,
+        json: Boolean(args.json),
+      });
+    }
+
     return runEmbeddedMode(dir, startPort, {
       projectName,
       forceNew,
@@ -280,6 +375,14 @@ export default defineCommand({
       browserPath,
       userDataDir,
       remoteDebuggingPort,
+      ...(detachedChild
+        ? {
+            detached: {
+              launchId: process.env.HYPERFRAMES_PREVIEW_LAUNCH_ID || "manual",
+              ownerPid,
+            },
+          }
+        : {}),
     });
   },
 });
@@ -635,9 +738,14 @@ function compactSelectionPayload(selection: StudioSelectionSnapshot): CompactSel
   };
 }
 
+// The full Studio URL to open or hand to the user: the project hash route.
+function studioDeepLink(url: string, projectName: string): string {
+  return `${url}#project/${projectName}`;
+}
+
 function openStudioBrowser(url: string, projectName: string, options?: BrowserLaunchOptions): void {
   if (options?.noOpen) return;
-  openBrowser(`${url}#project/${projectName}`, {
+  openBrowser(studioDeepLink(url, projectName), {
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
@@ -826,6 +934,90 @@ async function runLocalStudioMode(dir: string, options?: StudioLaunchOptions): P
 }
 
 /**
+ * Detached mode, launching side: spawn this same CLI as a detached child
+ * (`--detached-child`), wait for it to report through the state file, then
+ * print the URLs and return. The command exiting no longer takes the server
+ * with it — the child watches its own lifecycle instead (idle timeout, plus an
+ * optional --owner-pid). Borrowed from Compound Engineering's visual-probe
+ * server, adapted to the studio's "an open tab counts as activity" semantics.
+ */
+async function runDetachedParent(
+  dir: string,
+  startPort: number,
+  options: EmbeddedStudioOptions & { ownerPid: number | null; json: boolean },
+): Promise<void> {
+  const { randomUUID } = await import("node:crypto");
+  const launchId = randomUUID();
+  const paths = previewStatePaths(dir);
+  mkdirSync(paths.dir, { recursive: true });
+  rmSync(paths.state, { force: true });
+
+  const spinner = options.json ? null : clack.spinner();
+  if (!options.json) clack.intro(c.bold("hyperframes preview") + c.dim(" (detached)"));
+  spinner?.start("Starting studio in the background...");
+
+  const logFd = openSync(paths.log, "a");
+  const cliEntry = process.argv[1];
+  if (!cliEntry) {
+    spinner?.stop(c.error("Failed to start"));
+    console.error("  Could not resolve the CLI entry point for the detached child.");
+    process.exitCode = 1;
+    return;
+  }
+  const childArgs = [cliEntry, "preview", dir, "--port", String(startPort), "--detached-child"];
+  if (options.forceNew) childArgs.push("--force-new");
+  if (options.ownerPid !== null) childArgs.push("--owner-pid", String(options.ownerPid));
+  const child = spawn(process.execPath, childArgs, {
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: { ...process.env, HYPERFRAMES_PREVIEW_LAUNCH_ID: launchId },
+  });
+  let childExited = false;
+  child.once("exit", () => {
+    childExited = true;
+  });
+  child.unref();
+  closeSync(logFd);
+
+  const state = await waitForServerState(dir, launchId, { childAlive: () => !childExited });
+  if (!state) {
+    spinner?.stop(c.error("Detached studio failed to start"));
+    if (options.json) {
+      console.log(
+        JSON.stringify({ ok: false, error: "preview did not report ready", log: paths.log }),
+      );
+    } else {
+      const tail = existsSync(paths.log)
+        ? readFileSync(paths.log, "utf-8").trimEnd().split("\n").slice(-12).join("\n")
+        : "";
+      console.error();
+      if (tail) console.error(tail);
+      console.error();
+      console.error(`  ${c.dim("Full log:")} ${paths.log}`);
+      console.error();
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  spinner?.stop(
+    c.success(state.status === "already-running" ? "Already running" : "Studio running (detached)"),
+  );
+  if (options.json) {
+    console.log(JSON.stringify({ ok: true, ...state, log: paths.log }, null, 2));
+  } else {
+    printStudioSummary(state.projectName, state.url, {
+      details: [
+        `Open      ${state.boardUrl}`,
+        "The server keeps running after this command returns.",
+      ],
+      footer: "Stop it with: hyperframes preview --stop",
+    });
+  }
+  openStudioBrowser(state.url, state.projectName, options);
+}
+
+/**
  * Embedded mode: serve the pre-built studio SPA with a standalone Hono server.
  * Works without any additional dependencies — the studio is bundled in dist/.
  *
@@ -864,10 +1056,21 @@ async function runEmbeddedMode(
   const { app } = createStudioServer({ projectDir: dir, projectName: pName });
   const serverBuildSignature = await loadPreviewServerBuildSignature();
 
+  // Detached servers track request activity: an open Studio tab polls the
+  // project signature, so "idle" only starts once nobody is looking.
+  const detached = options?.detached ?? null;
+  let lastActivityMs = Date.now();
+  const fetchHandler: typeof app.fetch = detached
+    ? (...fetchArgs: Parameters<typeof app.fetch>) => {
+        lastActivityMs = Date.now();
+        return app.fetch(...fetchArgs);
+      }
+    : app.fetch;
+
   let result: FindPortResult;
   try {
     result = await findPortAndServe(
-      app.fetch,
+      fetchHandler,
       startPort,
       dir,
       !!options?.forceNew,
@@ -885,6 +1088,21 @@ async function runEmbeddedMode(
   if (result.type === "already-running") {
     const url = `http://localhost:${result.port}`;
     s.stop(c.success("Already running"));
+    if (detached) {
+      // Report the existing server back to the launching process and exit —
+      // its lifecycle belongs to whoever started it.
+      writeServerState(dir, {
+        launchId: detached.launchId,
+        status: "already-running",
+        port: result.port,
+        url,
+        boardUrl: studioDeepLink(url, pName),
+        pid: null,
+        projectName: pName,
+        projectDir: dir,
+        startedAt: new Date().toISOString(),
+      });
+    }
     printStudioSummary(pName, url, {
       details: ["Reusing existing server. Use --force-new to start a fresh instance."],
     });
@@ -904,9 +1122,37 @@ async function runEmbeddedMode(
       "Edit with your AI agent — it has HyperFrames skills installed.",
       "Changes reload automatically in the studio.",
     ],
-    footer: "Press Ctrl+C to stop",
+    footer: detached ? "Detached — stop with: hyperframes preview --stop" : "Press Ctrl+C to stop",
   });
   openStudioBrowser(url, pName, options);
+
+  if (detached) {
+    writeServerState(dir, {
+      launchId: detached.launchId,
+      status: "started",
+      port: result.port,
+      url,
+      boardUrl: studioDeepLink(url, pName),
+      pid: process.pid,
+      projectName: pName,
+      projectDir: dir,
+      startedAt: new Date().toISOString(),
+    });
+    const idleLimitMs = resolveIdleLimitMs(process.env.HYPERFRAMES_PREVIEW_IDLE_TIMEOUT_MS);
+    const lifecycleTimer = setInterval(() => {
+      const reason = detachedShutdownReason({
+        ownerPid: detached.ownerPid,
+        ownerAlive: processAlive,
+        idleMs: Date.now() - lastActivityMs,
+        idleLimitMs,
+      });
+      if (!reason) return;
+      clearInterval(lifecycleTimer);
+      console.log(`  Detached preview shutting down: ${reason}.`);
+      process.kill(process.pid, "SIGTERM");
+    }, 30_000);
+    lifecycleTimer.unref();
+  }
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the
@@ -919,7 +1165,7 @@ async function runEmbeddedMode(
   // interface on stdin so the keystroke is observed at the TTY layer and
   // re-emit it as SIGINT. No-op on platforms where the signal already arrives.
   let rl: import("node:readline").Interface | undefined;
-  if (process.platform === "win32") {
+  if (process.platform === "win32" && !detached) {
     const readline = await import("node:readline");
     rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     rl.on("SIGINT", () => {
@@ -935,6 +1181,13 @@ async function runEmbeddedMode(
       process.off("SIGINT", shutdown);
       process.off("SIGTERM", shutdown);
       rl?.close();
+      if (detached) {
+        try {
+          clearServerState(dir, detached.launchId);
+        } catch {
+          /* state file cleanup is best-effort */
+        }
+      }
       console.log();
       console.log(`  ${c.dim("Shutting down studio...")}`);
 

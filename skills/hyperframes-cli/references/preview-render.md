@@ -5,13 +5,17 @@ Serve, render, and share commands.
 ## preview
 
 ```bash
-npx hyperframes preview                   # serve current directory
+npx hyperframes preview                   # serve current directory (foreground, Ctrl+C to stop)
+npx hyperframes preview --detach          # serve in the background; returns once serving
+npx hyperframes preview --stop            # stop this project's server
 npx hyperframes preview --port 4567       # custom port (default 3002)
 npx hyperframes preview --selection --json # print the current Studio selection and exit
 npx hyperframes preview --context --json  # print compact agent context from Studio
 ```
 
 Hot-reloads on file changes. Opens Studio in the browser automatically — the full timeline editor, where the user can play the video and edit anything by hand before rendering. This is the review surface, not just a viewer.
+
+**From an agent, prefer `--detach`.** The command comes back as soon as the server is serving and prints both the base URL and the ready-to-hand project link (the `Open` line; `--json` for the machine shape) — no background task to babysit, and the server outlives the session that started it. A detached server watches its own lifecycle: it exits after an hour without HTTP requests, or as soon as a process named via `--owner-pid <pid>` is gone. Tune the idle window with `HYPERFRAMES_PREVIEW_IDLE_TIMEOUT_MS` (`0` disables). It reports through `.hyperframes/preview/server.json` and logs to `.hyperframes/preview/server.log` — read the log when a detached start fails.
 
 When handing a project back to the user, use the Studio project URL, not the source `index.html` path:
 
