@@ -35,6 +35,7 @@ export function DesignPanelPromoteProvider({
   const persist = useVariablesPersist({
     ...persistDeps,
     sdkSession: handle.session,
+    publishSdkSession: handle.publish,
     activeCompPath: targetPath,
   });
   return (

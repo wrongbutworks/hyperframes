@@ -16,6 +16,8 @@ export interface UseSlideshowPersistParams {
   }) => Promise<void>;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: (session: Composition) => void;
   /**
    * When provided, rapid writes with the same key coalesce through the
    * save-queue infra (via recordEdit's coalesceKey) so back-to-back persists
@@ -33,6 +35,7 @@ export function useSlideshowPersist({
   recordEdit,
   reloadPreview,
   domEditSaveTimestampRef,
+  publishSdkSession,
   coalesceKey,
 }: UseSlideshowPersistParams): (manifest: SlideshowManifest) => Promise<void> {
   return useCallback(
@@ -50,6 +53,8 @@ export function useSlideshowPersist({
           writeProjectFile,
           reloadPreview,
           domEditSaveTimestampRef,
+          readProjectFile,
+          publishSession: publishSdkSession,
         },
         coalesceKey,
       });
@@ -62,6 +67,7 @@ export function useSlideshowPersist({
       recordEdit,
       reloadPreview,
       domEditSaveTimestampRef,
+      publishSdkSession,
       coalesceKey,
     ],
   );

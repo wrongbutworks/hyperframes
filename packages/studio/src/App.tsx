@@ -184,6 +184,7 @@ export function StudioApp() {
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
     sdkSession: editFlowSdkSession,
+    publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
     handleDomZIndexReorderCommitRef,
   });
@@ -301,6 +302,7 @@ export function StudioApp() {
     selectSidebarTab: sidebarTabRef.current.select,
     getSidebarTab: sidebarTabRef.current.get,
     sdkSession: editFlowSdkSession,
+    publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
@@ -559,6 +561,7 @@ export function StudioApp() {
                         recordingDuration={gestureRecording.recordingDuration}
                         onToggleRecording={recordingToggle}
                         sdkSession={sdkHandle.session}
+                        publishSdkSession={sdkHandle.publish}
                         reloadPreview={reloadPreview}
                         domEditSaveTimestampRef={domEditSaveTimestampRef}
                         recordEdit={editHistory.recordEdit}

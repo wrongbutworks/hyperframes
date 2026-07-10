@@ -39,6 +39,8 @@ export interface UseTimelineEditingOptions {
   isRecordingRef?: RefObject<boolean>;
   /** Stage 7 §3.2: SDK session for routing timing ops through setTiming. */
   sdkSession?: Composition | null;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: (session: Composition) => void;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;

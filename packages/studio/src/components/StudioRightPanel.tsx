@@ -56,6 +56,7 @@ export interface StudioRightPanelProps {
   onToggleRecording?: () => void;
   /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
   sdkSession: Composition | null;
+  publishSdkSession: (session: Composition) => void;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
@@ -75,6 +76,7 @@ export function StudioRightPanel({
   recordingDuration,
   onToggleRecording,
   sdkSession,
+  publishSdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
@@ -167,6 +169,7 @@ export function StudioRightPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
   });
 
   // Notes path: persists are debounced in SlideshowPanel; coalesceKey ensures
@@ -179,6 +182,7 @@ export function StudioRightPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
     coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
   });
 
@@ -529,6 +533,7 @@ export function StudioRightPanel({
               ) : rightPanelTab === "variables" ? (
                 <VariablesPanel
                   sdkSession={sdkSession}
+                  publishSdkSession={publishSdkSession}
                   reloadPreview={reloadPreview}
                   domEditSaveTimestampRef={domEditSaveTimestampRef}
                   recordEdit={recordEdit}

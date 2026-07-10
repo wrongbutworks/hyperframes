@@ -32,6 +32,7 @@ function shellSingleQuote(value: string): string {
 
 interface VariablesPanelProps {
   sdkSession: Composition | null;
+  publishSdkSession: (session: Composition) => void;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
@@ -247,6 +248,7 @@ const EMPTY_STATE = (
 // fallow-ignore-next-line complexity
 export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,
+  publishSdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
@@ -285,6 +287,7 @@ export const VariablesPanel = memo(function VariablesPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
   });
 
   const declarations = useMemo(

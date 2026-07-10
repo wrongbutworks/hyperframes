@@ -5,6 +5,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
@@ -124,7 +125,7 @@ export function applyPreviewSync(
 
 // oxfmt-ignore
 // fallow-ignore-next-line complexity
-export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
+export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIframeRef, editHistory, domEditSaveTimestampRef, reloadPreview, onCacheInvalidate, onFileContentChanged, showToast, sdkSession, publishSdkSession, writeProjectFile, forceReloadSdkSession }: GsapScriptCommitsParams) {
   // Serializer for per-key commits (options.serializeKey). Keyed by
   // `gsap:${animationId}:meta`, it chains a meta commit onto the prior one for
   // the same animationId so their POSTs can't interleave. Held in a ref so the
@@ -238,6 +239,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
             compositionPath: activeCompPath,
             serialize: serializeByFile,
             readProjectFile: readProjectFileContent,
+            publishSession: publishSdkSession,
           }
         : null,
     [
@@ -249,6 +251,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       activeCompPath,
       serializeByFile,
       readProjectFileContent,
+      publishSdkSession,
     ],
   );
 
@@ -256,6 +259,10 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     sdkSession,
     sdkDeps,
     activeCompPath,
+    onFlushError: (error, selection, mutation, label) => {
+      trackGsapSaveFailure(error, selection, mutation, label);
+      showToast?.(`Couldn't save animation: ${getStudioSaveErrorMessage(error)}`, "error");
+    },
   });
   const animationOps = useGsapAnimationOps({
     projectIdRef,

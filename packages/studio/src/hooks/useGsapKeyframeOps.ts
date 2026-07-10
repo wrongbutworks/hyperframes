@@ -8,6 +8,7 @@ import {
   sdkGsapRemoveKeyframePersist,
   sdkGsapRemoveAllKeyframesPersist,
   sdkGsapConvertToKeyframesPersist,
+  cutoverCommittedOrThrow,
   type CutoverDeps,
 } from "../utils/sdkCutover";
 import type { KeyframeCacheEntry } from "../player/store/playerStore";
@@ -120,7 +121,7 @@ export function useGsapKeyframeOps({
                 coalesceKey: `gsap:${animationId}:kf:${percentage}`,
               },
             );
-            if (handled) return;
+            if (cutoverCommittedOrThrow(handled)) return;
           }
           await commitMutation(selection, mutation, {
             label: `Add keyframe at ${percentage}%`,
@@ -152,7 +153,7 @@ export function useGsapKeyframeOps({
           sdkDeps,
           { label: `Add keyframe at ${percentage}%` },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       return commitMutation(
         selection,
@@ -191,7 +192,7 @@ export function useGsapKeyframeOps({
               sdkDeps,
               { label: `Remove keyframe at ${percentage}%` },
             );
-            if (handled) return;
+            if (cutoverCommittedOrThrow(handled)) return;
           }
           await commitMutation(selection, mutation, {
             label: `Remove keyframe at ${percentage}%`,
@@ -272,7 +273,7 @@ export function useGsapKeyframeOps({
           sdkDeps,
           { label: "Convert to keyframes" },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       return commitMutation(
         selection,
@@ -301,7 +302,7 @@ export function useGsapKeyframeOps({
           sdkDeps,
           { label: "Remove all keyframes" },
         );
-        if (handled) return;
+        if (cutoverCommittedOrThrow(handled)) return;
       }
       commitMutationSafely(
         selection,

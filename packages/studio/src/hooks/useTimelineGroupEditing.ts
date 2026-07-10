@@ -1,7 +1,7 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
-import { sdkTimingBatchPersist } from "../utils/sdkCutover";
+import { cutoverCommittedOrThrow, sdkTimingBatchPersist } from "../utils/sdkCutover";
 import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
@@ -47,6 +47,7 @@ interface UseTimelineGroupEditingOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   sdkSession?: Composition | null;
+  publishSdkSession?: (session: Composition) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
 }
@@ -93,6 +94,7 @@ export function useTimelineGroupEditing({
   recordEdit,
   reloadPreview,
   sdkSession,
+  publishSdkSession,
   showToast,
   writeProjectFile,
 }: UseTimelineGroupEditingOptions) {
@@ -182,10 +184,11 @@ export function useTimelineGroupEditing({
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
               readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+              publishSession: publishSdkSession,
             },
             { label: "Move timeline clips", coalesceKey },
           );
-          if (handled) return;
+          if (cutoverCommittedOrThrow(handled)) return;
         }
 
         await persistServerBatch(
@@ -241,6 +244,7 @@ export function useTimelineGroupEditing({
       recordEdit,
       reloadPreview,
       sdkSession,
+      publishSdkSession,
       writeProjectFile,
     ],
   );
@@ -294,10 +298,11 @@ export function useTimelineGroupEditing({
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
               readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+              publishSession: publishSdkSession,
             },
             { label: "Resize timeline clips", coalesceKey },
           );
-          if (handled) return;
+          if (cutoverCommittedOrThrow(handled)) return;
         }
 
         await persistServerBatch(
@@ -362,6 +367,7 @@ export function useTimelineGroupEditing({
       recordEdit,
       reloadPreview,
       sdkSession,
+      publishSdkSession,
       writeProjectFile,
     ],
   );

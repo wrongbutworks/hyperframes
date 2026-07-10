@@ -67,6 +67,7 @@ export interface UseDomEditSessionParams {
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
   sdkSession?: Composition | null;
+  publishSdkSession?: (session: Composition) => void;
   forceReloadSdkSession?: () => void;
 }
 
@@ -108,6 +109,7 @@ export function useDomEditSession({
   selectSidebarTab,
   getSidebarTab,
   sdkSession,
+  publishSdkSession,
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
@@ -217,6 +219,7 @@ export function useDomEditSession({
     onFileContentChanged: updateEditingFileContent,
     showToast,
     sdkSession,
+    publishSdkSession,
     writeProjectFile,
     forceReloadSdkSession,
   });
@@ -274,6 +277,8 @@ export function useDomEditSession({
               reloadPreview,
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
+              readProjectFile,
+              publishSession: publishSdkSession,
             },
             options,
           );
@@ -287,6 +292,8 @@ export function useDomEditSession({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
+            readProjectFile,
+            publishSession: publishSdkSession,
           })
       : undefined,
     // Resolver shadow for the z-index reorder edit: it takes the server path (no

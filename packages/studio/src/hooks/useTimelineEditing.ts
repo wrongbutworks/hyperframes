@@ -39,7 +39,7 @@ import {
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
-import { sdkTimingPersist } from "../utils/sdkCutover";
+import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 
 type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
@@ -60,6 +60,7 @@ export function useTimelineEditing({
   uploadProjectFiles,
   isRecordingRef,
   sdkSession,
+  publishSdkSession,
   forceReloadSdkSession,
   handleDomZIndexReorderCommitRef,
 }: UseTimelineEditingOptions) {
@@ -128,6 +129,7 @@ export function useTimelineEditing({
     recordEdit,
     reloadPreview,
     sdkSession,
+    publishSdkSession,
     showToast,
     writeProjectFile,
   });
@@ -198,13 +200,12 @@ export function useTimelineEditing({
               reloadPreview,
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
-              // Capture on-disk bytes as the undo `before` so undoing a timing move
-              // restores the file verbatim, not a normalized full-DOM re-emit.
               readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+              publishSession: publishSdkSession,
             },
             { label: "Move timeline clip", coalesceKey },
-          ).then((handled) => {
-            if (!handled) return moveFallback();
+          ).then((result) => {
+            if (!cutoverCommittedOrThrow(result)) return moveFallback();
           });
         }
         return moveFallback();
@@ -215,6 +216,7 @@ export function useTimelineEditing({
       enqueueEdit,
       activeCompPath,
       sdkSession,
+      publishSdkSession,
       recordEdit,
       writeProjectFile,
       reloadPreview,
@@ -234,9 +236,6 @@ export function useTimelineEditing({
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
-      // Patch the live playback-start/media-start attr too, or a resize that
-      // trims the playback start leaves the preview showing the old in-point
-      // until the next reload (the persisted patch handles it via pbs below).
       if (updates.playbackStart != null) {
         const liveAttr =
           element.playbackStartAttr === "playback-start"
@@ -252,9 +251,6 @@ export function useTimelineEditing({
       const hasPbsAdjustment =
         updates.playbackStart != null ||
         (updates.start !== element.start && element.playbackStart != null);
-      // Server-path fallback: after persisting the attr patch, scale GSAP tween
-      // positions/durations on the server. Extending edits can keep the iframe
-      // live unless a GSAP source rewrite needs a fresh run.
       const coalesceKey = `timeline-resize:${element.hfId ?? element.id}`;
       const timingChanged =
         updates.start !== element.start || updates.duration !== element.duration;
@@ -296,13 +292,12 @@ export function useTimelineEditing({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
-            // Capture on-disk bytes as the undo `before` so undoing a timing
-            // resize restores the file verbatim, not a normalized full-DOM re-emit.
             readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+            publishSession: publishSdkSession,
           },
           { label: "Resize timeline clip", coalesceKey },
-        ).then((handled) => {
-          if (!handled) return resizeFallback();
+        ).then((result) => {
+          if (!cutoverCommittedOrThrow(result)) return resizeFallback();
         });
       }
       return resizeFallback();
@@ -312,6 +307,7 @@ export function useTimelineEditing({
       enqueueEdit,
       activeCompPath,
       sdkSession,
+      publishSdkSession,
       recordEdit,
       writeProjectFile,
       reloadPreview,

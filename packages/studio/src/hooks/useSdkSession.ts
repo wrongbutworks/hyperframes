@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { MutableRefObject } from "react";
 import { openComposition } from "@hyperframes/sdk";
 import type { Composition } from "@hyperframes/sdk";
 import { readStudioFileChangePath } from "../components/editor/manualEdits";
 import { isSelfWriteEcho } from "./sdkSelfWriteRegistry";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 /**
  * Read a project file's content, or undefined on a non-2xx (optional read).
@@ -82,6 +83,8 @@ export function shouldReloadOnFileChange(
 
 export interface SdkSessionHandle {
   session: Composition | null;
+  /** Atomically publish a fully persisted candidate session. */
+  publish: (session: Composition) => void;
   /**
    * Force a session reload immediately, bypassing the self-write suppress
    * window. Call after undo/redo writes the active composition file so the
@@ -96,6 +99,7 @@ export function useSdkSession(
   domEditSaveTimestampRef?: MutableRefObject<number>,
 ): SdkSessionHandle {
   const [session, setSession] = useState<Composition | null>(null);
+  const sessionRef = useRef<Composition | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   // ── Re-open on external change to the active composition ──
@@ -160,8 +164,11 @@ export function useSdkSession(
           comp.dispose();
           return;
         }
+        const previous = sessionRef.current;
         compRef.current = comp;
+        sessionRef.current = comp;
         setSession(comp);
+        if (previous && previous !== comp) previous.dispose();
       })
       .catch(() => {
         if (!cancelled) setSession(null);
@@ -171,10 +178,28 @@ export function useSdkSession(
       cancelled = true;
       // No queue to flush; dispose only. (Flushing here would serialize the
       // pre-undo in-memory doc and race the revert write on undo/redo reload.)
-      compRef.current?.dispose();
+      const owned = compRef.current;
+      if (sessionRef.current === owned) sessionRef.current = null;
+      owned?.dispose();
     };
   }, [projectId, activeCompPath, reloadToken]);
 
   const forceReload = useCallback(() => setReloadToken((t) => t + 1), []);
-  return { session, forceReload };
+  const publish = useCallback((candidate: Composition) => {
+    const previous = sessionRef.current;
+    sessionRef.current = candidate;
+    setSession(candidate);
+    if (previous && previous !== candidate) {
+      try {
+        previous.dispose();
+      } catch (error) {
+        // Publication already succeeded. Disposal is cleanup, not part of the
+        // transaction, and must never make the caller roll back a live session.
+        trackStudioEvent("sdk_session_dispose_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }, []);
+  return { session, publish, forceReload };
 }
