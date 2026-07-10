@@ -10,7 +10,6 @@ import {
   buildChromeArgs,
   drainBrowserPool,
   forceReleaseBrowser,
-  releaseBrowser,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
 } from "./browserManager.js";
@@ -305,8 +304,8 @@ describe("browser pool", () => {
     expect(first.browser).toBe(second.browser);
     expect(launchFn).toHaveBeenCalledTimes(1);
 
-    await releaseBrowser(first.browser, poolCfg);
-    await releaseBrowser(second.browser, poolCfg);
+    await first.release();
+    await second.release();
   });
 
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
@@ -320,14 +319,14 @@ describe("browser pool", () => {
     expect(a.browser).toBe(b.browser);
     expect(b.browser).toBe(c.browser);
 
-    await releaseBrowser(a.browser, poolCfg);
-    await releaseBrowser(b.browser, poolCfg);
-    await releaseBrowser(c.browser, poolCfg);
+    await a.release();
+    await b.release();
+    await c.release();
   });
 
   it("pool recovers from a disconnected browser", async () => {
     const first = await acquireBrowser(["--no-sandbox"], poolCfg);
-    await releaseBrowser(first.browser, poolCfg);
+    await first.release();
 
     // Simulate Chrome crash
     (first.browser as unknown as { connected: boolean }).connected = false;
@@ -340,14 +339,14 @@ describe("browser pool", () => {
     expect(second.browser).not.toBe(first.browser);
     expect(launchFn).toHaveBeenCalledTimes(2);
 
-    await releaseBrowser(second.browser, poolCfg);
+    await second.release();
   });
 
   it("release at refCount 0 closes the browser", async () => {
     const result = await acquireBrowser(["--no-sandbox"], poolCfg);
     const closeFn = result.browser.close as ReturnType<typeof vi.fn>;
 
-    await releaseBrowser(result.browser, poolCfg);
+    await result.release();
     expect(closeFn).toHaveBeenCalledTimes(1);
   });
 
@@ -360,8 +359,8 @@ describe("browser pool", () => {
     expect(second.browser).toBe(first.browser);
     expect(launchFn).toHaveBeenCalledTimes(1);
 
-    await releaseBrowser(first.browser, poolCfg);
-    await releaseBrowser(second.browser, poolCfg);
+    await first.release();
+    await second.release();
   });
 
   it("forceReleaseBrowser does not kill Chrome when other sessions hold refs", async () => {
@@ -375,8 +374,9 @@ describe("browser pool", () => {
     // Should NOT have disconnected — other session still holds a ref
     expect(disconnectFn).not.toHaveBeenCalled();
 
-    // Release the remaining ref normally
-    await releaseBrowser(second.browser, poolCfg);
+    // Each owner releases its own identity; neither can consume the other.
+    result.forceRelease();
+    await second.release();
   });
 
   it("drainBrowserPool is safe to call when no browser is pooled", async () => {

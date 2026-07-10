@@ -167,12 +167,16 @@ async function downloadRemoteGifImageSources(
 // Uses the engine's browser pool so the thumbnail browser and render workers
 // share a single Chrome process instead of running two independent ones.
 
-let _thumbnailBrowser: import("puppeteer-core").Browser | null = null;
-let _thumbnailBrowserInitializing: Promise<import("puppeteer-core").Browser | null> | null = null;
+let _thumbnailBrowserLease: import("@hyperframes/engine").BrowserLease | null = null;
+let _thumbnailBrowserInitializing: Promise<
+  import("@hyperframes/engine").BrowserLease | null
+> | null = null;
 
 async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser | null> {
-  if (_thumbnailBrowser?.connected) return _thumbnailBrowser;
-  if (_thumbnailBrowserInitializing) return _thumbnailBrowserInitializing;
+  if (_thumbnailBrowserLease?.browser.connected) return _thumbnailBrowserLease.browser;
+  if (_thumbnailBrowserInitializing) {
+    return (await _thumbnailBrowserInitializing)?.browser ?? null;
+  }
 
   _thumbnailBrowserInitializing = (async () => {
     try {
@@ -192,12 +196,12 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
         buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
         { forceScreenshot: true },
       );
-      _thumbnailBrowser = acquired.browser;
-      _thumbnailBrowser.on("disconnected", () => {
-        _thumbnailBrowser = null;
+      _thumbnailBrowserLease = acquired;
+      acquired.browser.on("disconnected", () => {
+        if (_thumbnailBrowserLease === acquired) _thumbnailBrowserLease = null;
         _thumbnailBrowserInitializing = null;
       });
-      return _thumbnailBrowser;
+      return acquired;
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
@@ -208,16 +212,15 @@ async function getThumbnailBrowser(): Promise<import("puppeteer-core").Browser |
     }
   })();
 
-  return _thumbnailBrowserInitializing;
+  return (await _thumbnailBrowserInitializing)?.browser ?? null;
 }
 
 export async function closeThumbnailBrowser(): Promise<void> {
-  if (!_thumbnailBrowser) return;
-  const browser = _thumbnailBrowser;
-  _thumbnailBrowser = null;
+  if (!_thumbnailBrowserLease) return;
+  const lease = _thumbnailBrowserLease;
+  _thumbnailBrowserLease = null;
   _thumbnailBrowserInitializing = null;
-  const { releaseBrowser } = await import("@hyperframes/engine");
-  await releaseBrowser(browser).catch(() => {});
+  await lease.release().catch(() => {});
 }
 
 // ── Server factory ──────────────────────────────────────────────────────────

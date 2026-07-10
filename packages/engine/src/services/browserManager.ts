@@ -12,6 +12,20 @@ import { join } from "path";
 import { homedir } from "os";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
+import {
+  BrowserLeasePool,
+  type BrowserLaunchFingerprint,
+  type BrowserLease,
+  type CaptureMode,
+} from "./browserLeasePool.js";
+
+export { BrowserLeasePool } from "./browserLeasePool.js";
+export type {
+  BrowserLaunchFingerprint,
+  BrowserLease,
+  BrowserPoolState,
+  CaptureMode,
+} from "./browserLeasePool.js";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -96,15 +110,7 @@ async function probeHardwareWebGlInfo(
   }
 }
 
-// "beginframe" = atomic compositor control via HeadlessExperimental.beginFrame (Linux only)
-// "screenshot" = renderSeek + Page.captureScreenshot (all platforms)
-// "drawelement" = BeginFrame compositor advance + canvas.drawElementImage capture
-export type CaptureMode = "beginframe" | "screenshot" | "drawelement";
-
-export interface AcquiredBrowser {
-  browser: Browser;
-  captureMode: CaptureMode;
-}
+export type AcquiredBrowser = BrowserLease;
 
 /**
  * Resolve chrome-headless-shell binary for deterministic BeginFrame rendering.
@@ -147,11 +153,6 @@ export function resolveHeadlessShellPath(
   }
   return undefined;
 }
-
-let pooledBrowser: Browser | null = null;
-let pooledBrowserRefCount = 0;
-let pooledCaptureMode: CaptureMode = "screenshot";
-let _pooledBrowserLaunchPromise: Promise<AcquiredBrowser> | null = null;
 
 // Preserve the producer-era export so re-export shims keep the same public API.
 export const ENABLE_BROWSER_POOL = DEFAULT_CONFIG.enableBrowserPool;
@@ -338,20 +339,30 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
   console.error(`[hyperframes] browserGpuMode auto → ${resolved} (${reason})`);
 }
 
-/**
- * Resolve the capture mode the caller expects, WITHOUT launching a browser.
- * Used to validate pool compatibility before returning a cached instance.
- */
-function resolveRequestedCaptureMode(
-  config?: Partial<Pick<EngineConfig, "chromePath" | "forceScreenshot">>,
-): CaptureMode {
-  const headlessShell = resolveHeadlessShellPath(config);
-  // BeginFrame requires chrome-headless-shell AND Linux — crashes on
-  // macOS/Windows (crbug.com/40656275).
-  const isLinux = process.platform === "linux";
-  const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
-  if (headlessShell && isLinux && !forceScreenshot) return "beginframe";
-  return "screenshot";
+function createBrowserLaunchFingerprint(
+  chromeArgs: string[],
+  config?: Partial<
+    Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
+  >,
+): BrowserLaunchFingerprint {
+  const launchConfig = {
+    browserTimeout: DEFAULT_CONFIG.browserTimeout,
+    protocolTimeout: DEFAULT_CONFIG.protocolTimeout,
+    forceScreenshot: DEFAULT_CONFIG.forceScreenshot,
+    ...config,
+  };
+  const headlessShell = resolveHeadlessShellPath(launchConfig);
+  const requestedCaptureMode: CaptureMode =
+    headlessShell && process.platform === "linux" && !launchConfig.forceScreenshot
+      ? "beginframe"
+      : "screenshot";
+  return {
+    args: chromeArgs,
+    executablePath: headlessShell,
+    browserTimeoutMs: launchConfig.browserTimeout,
+    protocolTimeoutMs: launchConfig.protocolTimeout,
+    requestedCaptureMode,
+  };
 }
 
 export async function acquireBrowser(
@@ -364,162 +375,62 @@ export async function acquireBrowser(
   >,
 ): Promise<AcquiredBrowser> {
   const enablePool = config?.enableBrowserPool ?? DEFAULT_CONFIG.enableBrowserPool;
-
-  if (enablePool && pooledBrowser) {
-    if (!pooledBrowser.connected) {
-      pooledBrowser = null;
-      pooledBrowserRefCount = 0;
-      _pooledBrowserLaunchPromise = null;
-    } else {
-      // Validate mode compatibility: a caller that needs screenshot mode
-      // (forceScreenshot, alpha output, BeginFrame timeout retry) must not
-      // receive a beginframe browser — the BeginFrame-only flags make the
-      // compositor wait for frames the screenshot path never sends.
-      const requestedMode = resolveRequestedCaptureMode(config);
-      if (pooledCaptureMode === requestedMode) {
-        pooledBrowserRefCount += 1;
-        return { browser: pooledBrowser, captureMode: pooledCaptureMode };
-      }
-      // Mode mismatch — skip pool, launch a dedicated browser for this caller.
-      // Don't evict the pooled browser: other sessions may still hold refs.
-    }
-  }
-
-  // Dedup concurrent launches: when the pool is enabled and multiple callers
-  // (e.g. parallel workers via Promise.all) race into acquireBrowser before
-  // the first launch completes, they would all see pooledBrowser === null and
-  // each spawn a separate Chrome. Cache the in-flight launch Promise so the
-  // second+ callers await the same one instead of launching again.
-  if (enablePool && _pooledBrowserLaunchPromise) {
-    const result = await _pooledBrowserLaunchPromise;
-    const requestedMode = resolveRequestedCaptureMode(config);
-    if (result.captureMode === requestedMode) {
-      pooledBrowserRefCount += 1;
-      return result;
-    }
-    // Mode mismatch with pending launch — launch a dedicated browser.
-  }
-
-  const launchPromise = launchBrowser(chromeArgs, config);
-
-  if (enablePool && !pooledBrowser && !_pooledBrowserLaunchPromise) {
-    _pooledBrowserLaunchPromise = launchPromise;
-    try {
-      const result = await launchPromise;
-      pooledBrowser = result.browser;
-      pooledBrowserRefCount = 1;
-      pooledCaptureMode = result.captureMode;
-      return result;
-    } finally {
-      _pooledBrowserLaunchPromise = null;
-    }
-  }
-
-  return launchPromise;
+  return browserLeasePool.acquire(createBrowserLaunchFingerprint(chromeArgs, config), enablePool);
 }
 
 // fallow-ignore-next-line complexity
 async function launchBrowser(
-  chromeArgs: string[],
-  config?: Partial<
-    Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
-  >,
-): Promise<AcquiredBrowser> {
-  // Config chromePath overrides env var / auto-detection.
-  const headlessShell = resolveHeadlessShellPath(config);
-
-  // BeginFrame requires chrome-headless-shell AND Linux (crashes on
-  // macOS/Windows — crbug.com/40656275).
-  const isLinux = process.platform === "linux";
-  const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
-  let captureMode: CaptureMode;
-  let executablePath: string | undefined;
-
-  if (headlessShell && isLinux && !forceScreenshot) {
-    captureMode = "beginframe";
-    executablePath = headlessShell;
-  } else {
-    // Screenshot mode with renderSeek: works on all platforms.
-    captureMode = "screenshot";
-    executablePath = headlessShell ?? undefined;
-  }
-
+  fingerprint: Readonly<BrowserLaunchFingerprint>,
+): Promise<{ browser: Browser; captureMode: CaptureMode }> {
   const ppt = await getPuppeteer();
-  const browserTimeout = config?.browserTimeout ?? DEFAULT_CONFIG.browserTimeout;
-  const protocolTimeout = config?.protocolTimeout ?? DEFAULT_CONFIG.protocolTimeout;
-  let browser = await ppt.launch({
-    headless: true,
-    args: chromeArgs,
-    defaultViewport: null,
-    executablePath,
-    timeout: browserTimeout,
-    protocolTimeout,
-  });
+  let captureMode = fingerprint.requestedCaptureMode;
+  let browser: Browser | undefined;
+  try {
+    browser = await ppt.launch({
+      headless: true,
+      args: [...fingerprint.args],
+      defaultViewport: null,
+      executablePath: fingerprint.executablePath,
+      timeout: fingerprint.browserTimeoutMs,
+      protocolTimeout: fingerprint.protocolTimeoutMs,
+    });
 
-  const browserVersion = await browser.version().catch(() => "unknown");
-  const gpuFlags = chromeArgs.filter(
-    (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
-  );
-  console.log(
-    `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!headlessShell}, platform=${process.platform})`,
-  );
+    const browserVersion = await browser.version().catch(() => "unknown");
+    const gpuFlags = fingerprint.args.filter(
+      (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
+    );
+    console.log(
+      `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
+    );
 
-  if (captureMode === "beginframe") {
-    const supported = await probeBeginFrameSupport(browser).catch(() => true);
-    if (!supported) {
-      await browser.close().catch(() => {});
-      console.warn(
-        "[BrowserManager] HeadlessExperimental.beginFrame unavailable in this Chromium build; falling back to screenshot mode.",
-      );
-      captureMode = "screenshot";
-      browser = await ppt.launch({
-        headless: true,
-        args: stripBeginFrameFlags(chromeArgs),
-        defaultViewport: null,
-        executablePath,
-        timeout: browserTimeout,
-        protocolTimeout,
-      });
+    if (captureMode === "beginframe") {
+      const supported = await probeBeginFrameSupport(browser).catch(() => true);
+      if (!supported) {
+        await browser.close().catch(() => {});
+        browser = undefined;
+        console.warn(
+          "[BrowserManager] HeadlessExperimental.beginFrame unavailable in this Chromium build; falling back to screenshot mode.",
+        );
+        captureMode = "screenshot";
+        browser = await ppt.launch({
+          headless: true,
+          args: stripBeginFrameFlags([...fingerprint.args]),
+          defaultViewport: null,
+          executablePath: fingerprint.executablePath,
+          timeout: fingerprint.browserTimeoutMs,
+          protocolTimeout: fingerprint.protocolTimeoutMs,
+        });
+      }
     }
-  }
 
-  return { browser, captureMode };
+    return { browser, captureMode };
+  } catch (error) {
+    await browser?.close().catch(() => {});
+    throw error;
+  }
 }
 
-export async function releaseBrowser(
-  browser: Browser,
-  config?: Partial<Pick<EngineConfig, "enableBrowserPool">>,
-): Promise<void> {
-  const enablePool = config?.enableBrowserPool ?? DEFAULT_CONFIG.enableBrowserPool;
-  if (!enablePool) {
-    await browser.close().catch(() => {});
-    return;
-  }
-  if (pooledBrowser && pooledBrowser === browser) {
-    pooledBrowserRefCount = Math.max(0, pooledBrowserRefCount - 1);
-    if (pooledBrowserRefCount === 0) {
-      await browser.close().catch(() => {});
-      pooledBrowser = null;
-      _pooledBrowserLaunchPromise = null;
-    }
-    return;
-  }
-  await browser.close().catch(() => {});
-}
-
-export function forceReleaseBrowser(browser: Browser): void {
-  if (pooledBrowser && pooledBrowser === browser) {
-    // If other sessions still hold refs, just drop ours — don't kill the
-    // shared Chrome out from under them. The browser will be cleaned up when
-    // the last session releases or drainBrowserPool is called.
-    if (pooledBrowserRefCount > 1) {
-      pooledBrowserRefCount -= 1;
-      return;
-    }
-    pooledBrowserRefCount = 0;
-    pooledBrowser = null;
-    _pooledBrowserLaunchPromise = null;
-  }
+function forceCloseBrowserProcess(browser: Browser): void {
   const proc = (
     browser as unknown as {
       process?: () => { kill: (signal?: NodeJS.Signals) => boolean; killed?: boolean } | null;
@@ -539,33 +450,38 @@ export function forceReleaseBrowser(browser: Browser): void {
   }
 }
 
+const browserLeasePool = new BrowserLeasePool({
+  launch: launchBrowser,
+  close: async (browser) => browser.close(),
+  forceClose: forceCloseBrowserProcess,
+});
+
+export async function releaseBrowser(
+  browser: Browser,
+  _config?: Partial<Pick<EngineConfig, "enableBrowserPool">>,
+): Promise<void> {
+  // Backward-compatible escape hatch for browsers created outside this pool.
+  // A pooled browser must be released through its BrowserLease; reclaiming an
+  // arbitrary lease by shared Browser identity can release another owner.
+  await browserLeasePool.releaseUnleased(browser);
+}
+
+export function forceReleaseBrowser(browser: Browser): void {
+  browserLeasePool.forceReleaseUnleased(browser);
+}
+
 /**
  * Forcefully close the pooled browser if one exists, regardless of refCount.
  * Used for explicit cleanup at process exit or between independent render jobs
  * that should not share browser state.
  */
 export async function drainBrowserPool(): Promise<void> {
-  // Await any in-flight launch first — otherwise the launch resolves after we
-  // drain and produces a browser that nobody references (orphan).
-  const pending = _pooledBrowserLaunchPromise;
-  _pooledBrowserLaunchPromise = null;
-  if (pending) {
-    await pending.then((r) => r.browser.close()).catch(() => {});
-  }
-  if (pooledBrowser) {
-    const browser = pooledBrowser;
-    pooledBrowser = null;
-    pooledBrowserRefCount = 0;
-    await browser.close().catch(() => {});
-  }
+  await browserLeasePool.drain();
 }
 
 /** Test-only: reset all pool state. */
 export function _resetBrowserPoolForTests(): void {
-  pooledBrowser = null;
-  pooledBrowserRefCount = 0;
-  pooledCaptureMode = "screenshot";
-  _pooledBrowserLaunchPromise = null;
+  browserLeasePool.reset();
 }
 
 /** Test-only: inject a mock PuppeteerNode so tests bypass the dynamic import. */
