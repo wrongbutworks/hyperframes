@@ -90,6 +90,12 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
+    // Public player-state types are consumed by package users outside this
+    // workspace. Keep the barrel stable even when no in-repo import needs it.
+    {
+      "file": "packages/studio/src/player/index.ts",
+      "exports": ["ZoomMode"],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
