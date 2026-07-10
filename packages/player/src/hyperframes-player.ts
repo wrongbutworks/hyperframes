@@ -177,6 +177,8 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._sendControl("pause");
+    this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
     this.iframe.removeEventListener("load", this._onIframeLoad);
@@ -187,6 +189,9 @@ class HyperframesPlayer extends HTMLElement {
     this.shaderLoader.destroy();
     this._media.destroy();
     this.controlsApi?.destroy();
+    this.controlsApi = null;
+    this._paused = true;
+    this._ready = false;
   }
 
   // fallow-ignore-next-line complexity
@@ -749,6 +754,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    this._ready = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
