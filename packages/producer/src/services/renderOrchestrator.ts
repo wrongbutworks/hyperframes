@@ -90,6 +90,7 @@ import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
 import { OrderedRenderEventPublisher } from "./render/renderEventPublisher.js";
+import { ArtifactTransaction } from "./render/artifactTransaction.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { formatCaptureFrameName } from "../utils/paths.js";
 import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
@@ -1401,6 +1402,11 @@ export async function executeRenderJob(
   const isMov = outputFormat === "mov";
   const isPngSequence = outputFormat === "png-sequence";
   const isGif = outputFormat === "gif";
+  const artifactTransaction = new ArtifactTransaction(
+    outputPath,
+    isPngSequence ? "directory" : "file",
+  );
+  const stagedOutputPath = artifactTransaction.stagingPath;
   const needsAlpha = isWebm || isMov || isPngSequence;
   // `forceScreenshot` is resolved exactly once inside `compileStage` (alpha
   // output + composition `renderModeHints` are folded together there) and
@@ -2685,7 +2691,7 @@ export async function executeRenderJob(
             runEncodeStage({
               job,
               log,
-              outputPath,
+              outputPath: stagedOutputPath,
               framesDir,
               videoOnlyPath,
               width,
@@ -2743,7 +2749,7 @@ export async function executeRenderJob(
             job,
             videoOnlyPath,
             audioOutputPath,
-            outputPath,
+            outputPath: stagedOutputPath,
             hasAudio,
             abortSignal,
             assertNotAborted,
@@ -2755,10 +2761,7 @@ export async function executeRenderJob(
       observability.checkpoint("assemble", `skipped for ${outputFormat}`);
     }
 
-    // ── Complete ─────────────────────────────────────────────────────────
-    job.outputPath = outputPath;
-    updateJobStatus(job, "complete", "Render complete", 100, onProgress);
-    await eventPublisher.flush();
+    artifactTransaction.validate();
 
     const totalElapsed = Date.now() - pipelineStart;
 
@@ -2766,7 +2769,7 @@ export async function executeRenderJob(
     // Record transient-tab-death retry burn (recovered case) so it's visible on
     // dashboard 1783183, not just logs. The catch mirrors this for the failed case.
     recordTransientRetryObservability();
-    observability.checkpoint("pipeline", "completed", { totalElapsedMs: totalElapsed });
+    observability.checkpoint("pipeline", "artifact validated", { totalElapsedMs: totalElapsed });
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
       capture: captureObservability,
@@ -2827,9 +2830,9 @@ export async function executeRenderJob(
       // easy access. Skipped for png-sequence: outputPath is a directory, not
       // a single file — the captured frames already live in `framesDir` under
       // workDir during a debug run anyway.
-      if (!isPngSequence && existsSync(outputPath)) {
+      if (!isPngSequence && existsSync(stagedOutputPath)) {
         const debugOutput = join(workDir, `output${videoExt}`);
-        copyFileSync(outputPath, debugOutput);
+        copyFileSync(stagedOutputPath, debugOutput);
       }
     } else if (process.env.KEEP_TEMP === "1") {
       log.info("KEEP_TEMP=1 — leaving workDir on disk for inspection", { workDir });
@@ -2842,7 +2845,13 @@ export async function executeRenderJob(
         log,
       );
     }
+
+    artifactTransaction.commit();
+    job.outputPath = outputPath;
+    updateJobStatus(job, "complete", "Render complete", 100, onProgress);
+    await eventPublisher.flush();
   } catch (error) {
+    await safeCleanup("rollback staged artifact", () => artifactTransaction.rollback(), log);
     if (error instanceof RenderCancelledError || abortSignal?.aborted) {
       job.error = error instanceof Error ? error.message : "render_cancelled";
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);
