@@ -11,6 +11,7 @@ import { selectedKeyframePercentagesForElement } from "../utils/keyframeSelectio
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { extendRootDurationInSource } from "../utils/rootDuration";
+import { postRuntimeControlMessage } from "../player/lib/runtimeProtocol";
 
 function isHTMLElement(element: Element | null): element is HTMLElement {
   if (!element) return false;
@@ -193,15 +194,9 @@ function postRootDurationToPreview(
 ): void {
   const duration = Number(durationSeconds);
   if (!Number.isFinite(duration) || duration <= 0) return;
-  iframe?.contentWindow?.postMessage(
-    {
-      source: "hf-parent",
-      type: "control",
-      action: "set-root-duration",
-      durationSeconds: duration,
-    },
-    "*",
-  );
+  postRuntimeControlMessage(iframe?.contentWindow, "set-root-duration", {
+    durationSeconds: duration,
+  });
 }
 
 // fallow-ignore-next-line complexity

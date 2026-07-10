@@ -1008,7 +1008,8 @@ describe("HyperframesPlayer seek() sync path", () => {
         source: "hf-parent",
         type: "control",
         action: "seek",
-        frame: Math.round(12.5 * 30),
+        timeSeconds: 12.5,
+        protocolVersion: 1,
       }),
       "*",
     );
@@ -1162,7 +1163,10 @@ describe("HyperframesPlayer seek() sync path", () => {
 
     player.seek(7);
 
-    expect(post).toHaveBeenCalledWith(expect.objectContaining({ action: "seek", frame: 210 }), "*");
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "seek", timeSeconds: 7, protocolVersion: 1 }),
+      "*",
+    );
   });
 
   it("does not throw when contentWindow access raises (cross-origin embed)", () => {
