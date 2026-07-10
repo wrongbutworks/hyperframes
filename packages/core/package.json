@@ -288,9 +288,13 @@
         "import": "./dist/editing/draftMarkers.js",
         "types": "./dist/editing/draftMarkers.d.ts"
       },
-      "./figma": {
-        "import": "./dist/figma/index.js",
-        "types": "./dist/figma/index.d.ts"
+      "./variables": {
+        "import": "./dist/variables.js",
+        "types": "./dist/variables.d.ts"
+      },
+      "./slideshow": {
+        "import": "./dist/slideshow/index.js",
+        "types": "./dist/slideshow/index.d.ts"
       },
       "./generators": {
         "import": "./dist/generators/hyperframes.js",
@@ -299,14 +303,6 @@
       "./lint": {
         "import": "./dist/lint/index.js",
         "types": "./dist/lint/index.d.ts"
-      },
-      "./variables": {
-        "import": "./dist/variables.js",
-        "types": "./dist/variables.d.ts"
-      },
-      "./slideshow": {
-        "import": "./dist/slideshow/index.js",
-        "types": "./dist/slideshow/index.d.ts"
       },
       "./compiler": {
         "import": "./dist/compiler/index.js",
@@ -420,6 +416,10 @@
       "./fonts/system-locator": {
         "import": "./dist/fonts/systemFontLocator.js",
         "types": "./dist/fonts/systemFontLocator.d.ts"
+      },
+      "./figma": {
+        "import": "./dist/figma/index.js",
+        "types": "./dist/figma/index.d.ts"
       },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json"

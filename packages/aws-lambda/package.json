@@ -17,24 +17,46 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
     "./handler": {
-      "import": "./dist/handler.js",
-      "types": "./dist/handler.d.ts"
+      "bun": "./src/handler.ts",
+      "import": "./src/handler.ts",
+      "types": "./src/handler.ts"
     },
     "./sdk": {
-      "import": "./dist/sdk/index.js",
-      "types": "./dist/sdk/index.d.ts"
+      "bun": "./src/sdk/index.ts",
+      "import": "./src/sdk/index.ts",
+      "types": "./src/sdk/index.ts"
     },
     "./cdk": {
-      "import": "./dist/cdk/index.js",
-      "types": "./dist/cdk/index.d.ts"
+      "bun": "./src/cdk/index.ts",
+      "import": "./src/cdk/index.ts",
+      "types": "./src/cdk/index.ts"
     }
   },
   "publishConfig": {
     "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./handler": {
+        "import": "./dist/handler.js",
+        "types": "./dist/handler.d.ts"
+      },
+      "./sdk": {
+        "import": "./dist/sdk/index.js",
+        "types": "./dist/sdk/index.d.ts"
+      },
+      "./cdk": {
+        "import": "./dist/cdk/index.js",
+        "types": "./dist/cdk/index.d.ts"
+      }
+    },
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
