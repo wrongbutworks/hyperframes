@@ -8,9 +8,19 @@ import {
   listPackedExportContracts,
   listPackedJavaScriptImportIssues,
   packageExportSpecifier,
+  renderBrowserConsumer,
 } from "./verify-packed-manifests.mjs";
 
 describe("packed manifest verifier", () => {
+  it("keeps every browser package live even when it declares sideEffects false", () => {
+    const consumer = renderBrowserConsumer(["@hyperframes/parsers", "@hyperframes/lint/browser"]);
+
+    assert.match(consumer, /import \* as packedBrowserModule0 from "@hyperframes\/parsers";/);
+    assert.match(consumer, /import \* as packedBrowserModule1 from "@hyperframes\/lint\/browser";/);
+    assert.match(consumer, /packedBrowserModules\.map\(\(module\) => Object\.keys\(module\)\)/);
+    assert.doesNotMatch(consumer, /import "@hyperframes\/parsers"/);
+  });
+
   it("derives consumer specifiers from the packed export map", () => {
     assert.equal(packageExportSpecifier("@hyperframes/sdk", "."), "@hyperframes/sdk");
     assert.equal(
@@ -30,8 +40,41 @@ describe("packed manifest verifier", () => {
         },
       ]),
       [
-        { specifier: "@hyperframes/example", typechecked: true },
-        { specifier: "@hyperframes/example/runtime", typechecked: false },
+        {
+          specifier: "@hyperframes/example",
+          typechecked: true,
+          environments: ["browser", "node"],
+        },
+        {
+          specifier: "@hyperframes/example/runtime",
+          typechecked: false,
+          environments: ["browser", "node"],
+        },
+      ],
+    );
+  });
+
+  it("uses descriptor environments to separate Node and browser promises", () => {
+    assert.deepEqual(
+      listPackedExportContracts([
+        {
+          packedPackage: {
+            name: "@hyperframes/example",
+            exports: { ".": { import: "./dist/index.js", types: "./dist/index.d.ts" } },
+          },
+          descriptor: {
+            subpaths: {
+              ".": { environments: ["browser"] },
+            },
+          },
+        },
+      ]),
+      [
+        {
+          specifier: "@hyperframes/example",
+          typechecked: true,
+          environments: ["browser"],
+        },
       ],
     );
   });

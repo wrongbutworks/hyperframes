@@ -5,13 +5,13 @@
       "source": "./src/index.ts",
       "runtime": "./dist/index.js",
       "types": "./dist/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["browser"]
     },
     "./tailwind-preset": {
       "source": "./src/styles/tailwind-preset.ts",
       "runtime": "./dist/styles/tailwind-preset.js",
       "types": "./dist/styles/tailwind-preset.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./package.json": {
       "source": "./package.json",

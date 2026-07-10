@@ -6,7 +6,7 @@
       "source": "./src/index.ts",
       "runtime": "./dist/index.js",
       "types": "./dist/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./package.json": {
       "source": "./package.json",
@@ -66,13 +66,13 @@
       "source": "./src/lint/index.ts",
       "runtime": "./dist/lint/index.js",
       "types": "./dist/lint/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./compiler": {
       "source": "./src/compiler/index.ts",
       "runtime": "./dist/compiler/index.js",
       "types": "./dist/compiler/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./color-grading": {
       "source": "./src/colorGrading.ts",
@@ -144,25 +144,25 @@
       "source": "./src/studio-api/index.ts",
       "runtime": "./dist/studio-api/index.js",
       "types": "./dist/studio-api/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./studio-api/screenshot-clip": {
       "source": "./src/studio-api/helpers/screenshotClip.ts",
       "runtime": "./dist/studio-api/helpers/screenshotClip.js",
       "types": "./dist/studio-api/helpers/screenshotClip.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./studio-api/manual-edits-render-script": {
       "source": "./src/studio-api/helpers/manualEditsRenderScript.ts",
       "runtime": "./dist/studio-api/helpers/manualEditsRenderScript.js",
       "types": "./dist/studio-api/helpers/manualEditsRenderScript.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./studio-api/studio-motion-render-script": {
       "source": "./src/studio-api/helpers/studioMotionRenderScript.ts",
       "runtime": "./dist/studio-api/helpers/studioMotionRenderScript.js",
       "types": "./dist/studio-api/helpers/studioMotionRenderScript.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./studio-api/draft-markers": {
       "source": "./src/studio-api/helpers/draftMarkers.ts",
@@ -174,7 +174,7 @@
       "source": "./src/studio-api/helpers/finiteMutation.ts",
       "runtime": "./dist/studio-api/helpers/finiteMutation.js",
       "types": "./dist/studio-api/helpers/finiteMutation.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./text": {
       "source": "./src/text/index.ts",
@@ -240,13 +240,13 @@
       "source": "./src/fonts/systemFontLocator.ts",
       "runtime": "./dist/fonts/systemFontLocator.js",
       "types": "./dist/fonts/systemFontLocator.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./figma": {
       "source": "./src/figma/index.ts",
       "runtime": "./dist/figma/index.js",
       "types": "./dist/figma/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./schemas/registry.json": {
       "source": "./schemas/registry.json",

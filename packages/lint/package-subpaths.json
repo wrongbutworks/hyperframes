@@ -6,7 +6,7 @@
       "source": "./src/index.ts",
       "runtime": "./dist/index.js",
       "types": "./dist/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./browser": {
       "source": "./src/browser.ts",

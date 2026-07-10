@@ -6,31 +6,31 @@
       "source": "./src/index.ts",
       "runtime": "./dist/index.js",
       "types": "./dist/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./package.json": {
       "source": "./package.json",
       "runtime": "./package.json",
       "types": null,
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./screenshot-clip": {
       "source": "./src/helpers/screenshotClip.ts",
       "runtime": "./dist/helpers/screenshotClip.js",
       "types": "./dist/helpers/screenshotClip.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./manual-edits-render-script": {
       "source": "./src/helpers/manualEditsRenderScript.ts",
       "runtime": "./dist/helpers/manualEditsRenderScript.js",
       "types": "./dist/helpers/manualEditsRenderScript.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./studio-motion-render-script": {
       "source": "./src/helpers/studioMotionRenderScript.ts",
       "runtime": "./dist/helpers/studioMotionRenderScript.js",
       "types": "./dist/helpers/studioMotionRenderScript.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./draft-markers": {
       "source": "./src/helpers/draftMarkers.ts",
@@ -42,13 +42,13 @@
       "source": "./src/helpers/finiteMutation.ts",
       "runtime": "./dist/helpers/finiteMutation.js",
       "types": "./dist/helpers/finiteMutation.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./source-mutation": {
       "source": "./src/helpers/sourceMutation.ts",
       "runtime": "./dist/helpers/sourceMutation.js",
       "types": "./dist/helpers/sourceMutation.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     }
   }
 }

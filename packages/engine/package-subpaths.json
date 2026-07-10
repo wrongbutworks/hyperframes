@@ -5,13 +5,13 @@
       "source": "./src/index.ts",
       "runtime": "./dist/index.js",
       "types": "./dist/index.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./alpha-blit": {
       "source": "./src/utils/alphaBlit.ts",
       "runtime": "./dist/utils/alphaBlit.js",
       "types": "./dist/utils/alphaBlit.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./shader-transitions": {
       "source": "./src/utils/shaderTransitions.ts",

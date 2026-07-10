@@ -9,7 +9,7 @@
         "require": "./dist/hyperframes-player.cjs"
       },
       "types": "./dist/hyperframes-player.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["browser"]
     },
     "./slideshow": {
       "source": "./dist/slideshow/hyperframes-slideshow.js",
@@ -19,7 +19,7 @@
         "require": "./dist/slideshow/hyperframes-slideshow.cjs"
       },
       "types": "./dist/slideshow/hyperframes-slideshow.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["browser"]
     }
   }
 }

@@ -17,7 +17,7 @@
       "source": "./src/adapters/fs.ts",
       "runtime": "./dist/adapters/fs.js",
       "types": "./dist/adapters/fs.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["bun", "node"]
     },
     "./adapters/headless": {
       "source": "./src/adapters/headless.ts",
