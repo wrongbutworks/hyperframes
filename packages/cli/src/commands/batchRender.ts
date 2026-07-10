@@ -305,10 +305,6 @@ function writeManifest(manifest: BatchManifest): void {
   writeFileSync(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 }
 
-function emitJsonEvent(event: Record<string, unknown>, json: boolean): void {
-  if (json) console.log(JSON.stringify(event));
-}
-
 async function renderBatchRow(
   row: PreparedBatchRow,
   manifest: BatchManifest,
@@ -322,11 +318,6 @@ async function renderBatchRow(
   manifestRow.status = "running";
   manifestRow.startedAt = new Date().toISOString();
   writeManifest(manifest);
-  emitJsonEvent(
-    { type: "batch-row-start", index: row.index, outputPath: row.outputPath },
-    options.json,
-  );
-
   if (!options.quiet && !options.json) {
     console.log(c.dim(`Batch row ${row.index}: ${row.outputPath}`));
   }
@@ -339,31 +330,12 @@ async function renderBatchRow(
     manifestRow.renderTimeMs = result.renderTimeMs;
     manifestRow.completedAt = new Date().toISOString();
     writeManifest(manifest);
-    emitJsonEvent(
-      {
-        type: "batch-row-complete",
-        index: row.index,
-        outputPath: row.outputPath,
-        durationMs: manifestRow.durationMs,
-        renderTimeMs: manifestRow.renderTimeMs,
-      },
-      options.json,
-    );
     return true;
   } catch (error: unknown) {
     manifestRow.status = "failed";
     manifestRow.error = errorMessage(error);
     manifestRow.completedAt = new Date().toISOString();
     writeManifest(manifest);
-    emitJsonEvent(
-      {
-        type: "batch-row-error",
-        index: row.index,
-        outputPath: row.outputPath,
-        error: manifestRow.error,
-      },
-      options.json,
-    );
     if (!options.quiet && !options.json) {
       console.log(c.error(`  Row ${row.index} failed: ${manifestRow.error}`));
     }
@@ -423,17 +395,19 @@ export async function runBatchRender(options: RunBatchRenderOptions): Promise<Ba
 
   if (stopLaunching) markUnstartedRowsSkipped(manifest);
   writeManifest(manifest);
-  emitJsonEvent(
-    {
-      type: "batch-complete",
-      manifestPath: manifest.manifestPath,
-      total: manifest.total,
-      completed: manifest.completed,
-      failed: manifest.failed,
-      skipped: manifest.skipped,
-    },
-    options.json,
-  );
+  if (options.json) {
+    console.log(
+      JSON.stringify({
+        type: "batch-complete",
+        manifestPath: manifest.manifestPath,
+        total: manifest.total,
+        completed: manifest.completed,
+        failed: manifest.failed,
+        skipped: manifest.skipped,
+        rows: manifest.rows,
+      }),
+    );
+  }
 
   if (!options.quiet && !options.json) {
     console.log("");
