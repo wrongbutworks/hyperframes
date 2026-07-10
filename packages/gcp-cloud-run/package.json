@@ -31,6 +31,11 @@
       "bun": "./src/sdk/index.ts",
       "import": "./src/sdk/index.ts",
       "types": "./src/sdk/index.ts"
+    },
+    "./terraform": {
+      "bun": "./src/terraform.ts",
+      "import": "./src/terraform.ts",
+      "types": "./src/terraform.ts"
     }
   },
   "publishConfig": {
@@ -47,6 +52,10 @@
       "./sdk": {
         "import": "./dist/sdk/index.js",
         "types": "./dist/sdk/index.d.ts"
+      },
+      "./terraform": {
+        "import": "./dist/terraform.js",
+        "types": "./dist/terraform.d.ts"
       }
     },
     "registry": "https://registry.npmjs.org/"

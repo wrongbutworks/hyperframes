@@ -59,6 +59,7 @@ var __dirname = __hf_dirname(__filename);`,
     // from the `dependencies`/workspace entry, not the bundled CLI.
     "@hyperframes/gcp-cloud-run",
     "@hyperframes/gcp-cloud-run/sdk",
+    "@hyperframes/gcp-cloud-run/terraform",
   ],
   noExternal: [
     "@hyperframes/core",
@@ -83,8 +84,6 @@ var __dirname = __hf_dirname(__filename);`,
       // Exact subpaths are generated from the same contracts as package
       // exports, avoiding esbuild's root-alias prefix substitution trap.
       ...sourceAliases(resolve(__dirname, "../producer"), [".", "./distributed"]),
-      ...sourceAliases(resolve(__dirname, "../aws-lambda"), ["./sdk"]),
-      ...sourceAliases(resolve(__dirname, "../gcp-cloud-run"), ["./sdk"]),
       ...sourceAliases(resolve(__dirname, "../engine"), [".", "./shader-transitions"]),
     };
     options.loader = { ...options.loader, ".browser.js": "text" };

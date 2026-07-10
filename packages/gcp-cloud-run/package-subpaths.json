@@ -18,6 +18,12 @@
       "runtime": "./dist/sdk/index.js",
       "types": "./dist/sdk/index.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./terraform": {
+      "source": "./src/terraform.ts",
+      "runtime": "./dist/terraform.js",
+      "types": "./dist/terraform.d.ts",
+      "environments": ["bun", "node"]
     }
   }
 }

@@ -394,13 +394,17 @@ function writeConsumerFixture(packDir, packedWorkspaces) {
     .map(({ specifier }) => specifier);
   writeFileSync(
     join(fixtureDir, "consumer-smoke.mjs"),
-    `const specifiers = ${JSON.stringify(specifiers, null, 2)};\n` +
+    `import { existsSync } from "node:fs";\n` +
+      `import { join } from "node:path";\n` +
+      `const specifiers = ${JSON.stringify(specifiers, null, 2)};\n` +
       `const nodeSpecifiers = ${JSON.stringify(nodeSpecifiers, null, 2)};\n` +
       `for (const specifier of specifiers) import.meta.resolve(specifier);\n` +
       `for (const specifier of nodeSpecifiers) {\n` +
       `  const options = specifier.endsWith(".json") ? { with: { type: "json" } } : undefined;\n` +
       `  await import(specifier, options);\n` +
       `}\n` +
+      `const terraform = await import("@hyperframes/gcp-cloud-run/terraform");\n` +
+      `if (!existsSync(join(terraform.getTerraformModuleDir(), "main.tf"))) throw new Error("packed Terraform module missing");\n` +
       `console.log(\`Resolved \${specifiers.length} packed exports and executed \${nodeSpecifiers.length} Node exports.\`);\n` +
       `process.exit(0);\n`,
   );
