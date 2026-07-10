@@ -172,6 +172,7 @@ describe("buildDockerRunArgs", () => {
         videoFrameFormat: "png",
         quiet: true,
         debug: true,
+        bestEffort: true,
         entryFile: "compositions/intro.html",
         experimentalFastCapture: true,
       },
@@ -191,6 +192,7 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("png");
     expect(args).toContain("--quiet");
     expect(args).toContain("--debug");
+    expect(args).toContain("--best-effort");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
     expect(args).toContain("--hdr");

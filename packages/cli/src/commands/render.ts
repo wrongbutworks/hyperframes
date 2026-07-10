@@ -266,6 +266,12 @@ export default defineCommand({
         "Write full render diagnostics and keep intermediate artifacts under the producer .debug directory.",
       default: false,
     },
+    "best-effort": {
+      type: "boolean",
+      description:
+        "Allow output with structured capture-readiness warnings. By default missing or unready media fails the render.",
+      default: false,
+    },
     strict: {
       type: "boolean",
       description: "Fail render on lint errors",
@@ -619,6 +625,7 @@ export default defineCommand({
     const browserGpuMode = resolveBrowserGpuForCli(useDocker, browserGpuArg);
     const quiet = args.quiet ?? false;
     const debug = args.debug ?? false;
+    const bestEffort = args["best-effort"] ?? false;
     const batchJson = args.json ?? false;
     const effectiveQuiet = quiet || (batchPath != null && batchJson);
     const strictAll = args["strict-all"] ?? false;
@@ -898,6 +905,7 @@ export default defineCommand({
         protocolTimeout,
         playerReadyTimeout,
         debug,
+        bestEffort,
         exitAfterComplete: false,
         throwOnError: true,
         skipFeedback: true,
@@ -956,6 +964,7 @@ export default defineCommand({
         videoFrameFormat,
         quiet,
         debug,
+        bestEffort,
         variables,
         entryFile,
         outputResolution,
@@ -984,6 +993,7 @@ export default defineCommand({
         quiet,
         browserPath,
         debug,
+        bestEffort,
         variables,
         entryFile,
         outputResolution,
@@ -1002,6 +1012,8 @@ export default defineCommand({
 export interface SingleRenderResult {
   durationMs?: number;
   renderTimeMs: number;
+  outcome?: "completed" | "completed_with_warnings";
+  warnings?: Array<{ code: string; message: string }>;
 }
 
 export function renderLintContinuationHint(strictErrors: boolean): string {
@@ -1032,6 +1044,7 @@ interface RenderOptions {
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
   debug?: boolean;
+  bestEffort?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -1366,6 +1379,7 @@ async function renderDocker(
       outputResolution: options.outputResolution,
       pageSideCompositing: options.pageSideCompositing,
       debug: options.debug,
+      bestEffort: options.bestEffort,
       experimentalFastCapture: options.experimentalFastCapture,
       pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     },
@@ -1486,6 +1500,7 @@ export async function renderLocal(
     entryFile: options.entryFile,
     outputResolution: options.outputResolution,
     debug: options.debug,
+    strictness: options.bestEffort ? "best-effort" : "strict",
   });
 
   const onProgress = options.quiet
@@ -1511,6 +1526,11 @@ export async function renderLocal(
 
   maybeConsumeDeParallelRouterTrial(deParallelRouterTrialArmed, job, options.quiet);
   const elapsed = Date.now() - startTime;
+  if (job.outcome === "completed_with_warnings") {
+    for (const warning of job.warnings) {
+      console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
+    }
+  }
   trackRenderMetrics(job, elapsed, options, false);
   printRenderComplete(
     outputPath,
@@ -1530,7 +1550,14 @@ export async function renderLocal(
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
     : undefined;
-  return { renderTimeMs: elapsed, durationMs };
+  const outcome =
+    job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
+  return {
+    renderTimeMs: elapsed,
+    durationMs,
+    outcome,
+    warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+  };
 }
 
 type UnrefableTimer = {

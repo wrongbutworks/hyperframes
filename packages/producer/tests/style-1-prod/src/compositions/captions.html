@@ -147,6 +147,10 @@
         });
 
         window.__timelines["captions"] = tl;
+        // The mounted host owns readiness under its authored id. Keep the
+        // template-local id above for selector compatibility, and publish the
+        // same timeline under the host id so strict capture does not wait.
+        window.__timelines["captions-comp"] = tl;
       })();
     </script>
   </div>
