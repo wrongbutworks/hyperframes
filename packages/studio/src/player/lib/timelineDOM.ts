@@ -10,6 +10,7 @@
 
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "./playbackTypes";
+import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { getElementZIndex, hasExplicitZIndex } from "./layerOrdering";
 import {
   resolveMediaElement,
@@ -310,24 +311,20 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
     if (node === rootComp) return;
     if (isTimelineIgnoredElement(node)) return;
     const el = node as HTMLElement;
-    const startStr = el.getAttribute("data-start");
-    if (startStr == null) return;
-    const start = parseFloat(startStr);
-    if (isNaN(start)) return;
+    const timing = readClipTiming(el);
+    const start = timing.start;
+    if (start == null) return;
     if (Number.isFinite(rootDuration) && rootDuration > 0 && start >= rootDuration) return;
 
     const tagLower = el.tagName.toLowerCase();
-    let dur = 0;
-    const durStr = el.getAttribute("data-duration");
-    if (durStr != null) dur = parseFloat(durStr);
-    if (isNaN(dur) || dur <= 0) dur = Math.max(0, rootDuration - start);
+    let dur = timing.duration ?? 0;
+    if (dur <= 0) dur = Math.max(0, rootDuration - start);
     if (Number.isFinite(rootDuration) && rootDuration > 0) {
       dur = Math.min(dur, Math.max(0, rootDuration - start));
     }
     if (!Number.isFinite(dur) || dur <= 0) return;
 
-    const trackStr = el.getAttribute("data-track-index");
-    const track = trackStr != null ? parseInt(trackStr, 10) : trackCounter++;
+    const track = timing.trackSource === "default" ? trackCounter++ : timing.trackIndex;
     // fallow-ignore-next-line code-duplication
     const compId = el.getAttribute("data-composition-id");
     const selector = getTimelineElementSelector(el);
@@ -355,7 +352,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       tag: tagLower,
       start,
       duration: dur,
-      track: isNaN(track) ? 0 : track,
+      track,
       zIndex: getTimelineElementZIndex(el),
       hasExplicitZIndex: getTimelineElementHasExplicitZIndex(el),
       stackingContextId: compositionContext.stackingContextId,

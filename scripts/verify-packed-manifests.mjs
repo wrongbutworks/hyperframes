@@ -305,7 +305,21 @@ function writeConsumerFixture(packDir, packedWorkspaces) {
   writeFileSync(
     join(fixtureDir, "package.json"),
     JSON.stringify(
-      { name: "packed-consumer", private: true, type: "module", dependencies },
+      {
+        name: "packed-consumer",
+        private: true,
+        type: "module",
+        dependencies,
+        // Force transitive workspace edges onto the tarballs under test. Without
+        // this, Bun may install the last registry release beneath a packed
+        // workspace and accidentally validate mixed-version internals.
+        overrides: Object.fromEntries(
+          packedWorkspaces.map(({ filename, packedPackage }) => [
+            packedPackage.name,
+            `file:${filename}`,
+          ]),
+        ),
+      },
       null,
       2,
     ),
