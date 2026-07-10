@@ -1,3 +1,4 @@
+import { failCommand } from "./commandResult.js";
 import { existsSync, statSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { errorBox } from "../ui/format.js";
@@ -62,7 +63,7 @@ export function resolveProject(dirArg: string | undefined): ProjectDir {
       // outside a project; the redaction in trackCliError strips the dir path.
       trackCommandFailure(process.argv[2] ?? "unknown", err);
       errorBox(err.title, err.hint, err.suggestion);
-      process.exit(1);
+      failCommand();
     }
     throw err;
   }

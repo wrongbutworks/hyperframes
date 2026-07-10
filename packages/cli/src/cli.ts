@@ -99,10 +99,19 @@ try {
 // Telemetry, update checks, and heavy modules are imported only when needed.
 // For --help we skip telemetry entirely.
 
-import { defineCommand, runMain } from "citty";
+import { defineCommand, runCommand } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
 import { getRunId } from "./telemetry/runId.js";
 import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
+import { resolveCommandUsage } from "./utils/commandUsageResolution.js";
+import {
+  CliResultSignal,
+  CliRuntimeError,
+  CliUsageError,
+  consumeCommandResult,
+  registerRootExitRequester,
+  type CommandResult,
+} from "./utils/commandResult.js";
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
@@ -151,14 +160,10 @@ const commandLoaders = {
   figma: () => import("./commands/figma.js").then((m) => m.default),
 };
 
-// Wrap each command's run() so a thrown failure reports its reason to telemetry
-// before citty catches the error and exits 1. The error is re-thrown unchanged,
-// preserving citty's print + exit-1 behavior. Commands that call process.exit()
-// themselves (e.g. `browser path`) bypass this and report inline.
 const subCommands = Object.fromEntries(
   Object.entries(commandLoaders).map(([name, load]) => [
     name,
-    trackCommandFailures(load, (err) => reportCommandFailure(command, err)),
+    trackCommandFailures(load, (error) => reportCommandFailure(command, error)),
   ]),
 );
 
@@ -207,12 +212,13 @@ let _trackCommandResult:
   | undefined;
 let _printUpdateNotice: (() => void) | undefined;
 let _printSkillsUpdateNotice: (() => void) | undefined;
+let telemetryReady: Promise<void> = Promise.resolve();
 
 // `events` is a telemetry-internal beacon: it self-tracks + self-flushes, so it
 // skips the per-command wrapper (no duplicate cli_command, no first-run notice
 // printed into a skill's captured output).
 if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
-  import("./telemetry/index.js").then((mod) => {
+  telemetryReady = import("./telemetry/index.js").then((mod) => {
     _flush = mod.flush;
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
@@ -262,33 +268,55 @@ if (
 
 const commandStart = Date.now();
 const runId = getRunId();
+let finalized = false;
 
-// Async flush for normal exit. `beforeExit` re-fires every time the
-// event loop drains, and the async `_flush()` itself schedules new
-// work — so a plain `on` listener would print the update notice (and
-// re-flush) once per drain (the user-reported double-print). `once`
-// detaches after first invocation, which is what we want for both.
-process.once("beforeExit", () => {
-  _flush?.().catch(() => {});
+// fallow-ignore-next-line complexity
+async function finalizeCli(result: CommandResult): Promise<void> {
+  if (finalized) return;
+  finalized = true;
+  commandFailed ||= result.exitCode !== 0;
+  await telemetryReady.catch(() => {});
+  _trackCommandResult?.({
+    command,
+    success: result.exitCode === 0 && !commandFailed,
+    exitCode: result.exitCode,
+    durationMs: Date.now() - commandStart,
+    runId,
+  });
+  await _flush?.().catch(() => {});
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
     _printSkillsUpdateNotice?.();
   }
+  process.exitCode = result.exitCode;
+}
+
+registerRootExitRequester((exitCode) => {
+  void finalizeCli({
+    exitCode,
+    kind: exitCode === 0 ? "success" : "runtime_error",
+    presented: true,
+  }).finally(() => process.exit(exitCode));
 });
 
 // Sync-only: exit handlers cannot await promises or drain microtasks.
 // _trackCommandResult / _trackCliError are captured references resolved
 // at init time, so they're callable synchronously here.
-process.on("exit", (code) => {
-  _trackCommandResult?.({
-    command,
-    success: code === 0 && !commandFailed,
-    exitCode: code,
-    durationMs: Date.now() - commandStart,
-    runId,
-  });
-  _flushSync?.();
-});
+process.on(
+  "exit",
+  // fallow-ignore-next-line complexity
+  (code) => {
+    if (finalized) return;
+    _trackCommandResult?.({
+      command,
+      success: code === 0 && !commandFailed,
+      exitCode: code,
+      durationMs: Date.now() - commandStart,
+      runId,
+    });
+    _flushSync?.();
+  },
+);
 
 process.on("uncaughtException", (error) => {
   if ((error as NodeJS.ErrnoException).code === "EPIPE") {
@@ -312,6 +340,7 @@ process.on("uncaughtException", (error) => {
 // The exit handler above will still fire with the real exit code.
 process.on("unhandledRejection", (reason) => {
   commandFailed = true;
+  process.exitCode = 1;
   const error = reason instanceof Error ? reason : new Error(String(reason));
   _trackCliError?.({
     error_name: error.name,
@@ -331,4 +360,39 @@ async function showUsage<T extends ArgsDef>(
   return impl(cmd as CommandDef, parent as CommandDef | undefined);
 }
 
-runMain(main, { showUsage });
+async function showRequestedUsage(): Promise<void> {
+  const requested = await resolveCommandUsage(main as CommandDef, argv);
+  return showUsage(requested.command, requested.parent);
+}
+
+function commandResultForError(error: unknown): CommandResult {
+  if (error instanceof CliResultSignal) return error.result;
+  if (error instanceof CliUsageError || error instanceof CliRuntimeError) return error.result;
+  return { exitCode: 1, kind: "runtime_error" };
+}
+
+// fallow-ignore-next-line complexity
+async function executeCli(): Promise<void> {
+  let result: CommandResult = { exitCode: 0, kind: "success" };
+  try {
+    if (isHelp) await showRequestedUsage();
+    else await runCommand(main, { rawArgs: argv });
+  } catch (error) {
+    result = commandResultForError(error);
+    if (!(error instanceof CliResultSignal)) {
+      commandFailed = true;
+      reportCommandFailure(command, error);
+      const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
+      if (error instanceof CliUsageError && !error.result.presented) await showRequestedUsage();
+      if (!typed || !error.result.presented) {
+        console.error(error instanceof Error ? error.message : String(error));
+      }
+    }
+  } finally {
+    const pending = consumeCommandResult();
+    if (pending.exitCode !== 0 || result.exitCode === 0) result = pending;
+    await finalizeCli(result);
+  }
+}
+
+await executeCli();

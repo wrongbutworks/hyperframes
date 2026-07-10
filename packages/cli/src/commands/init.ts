@@ -3,6 +3,7 @@
 // This branch only repointed the scaffolded npm scripts; the refactor is its
 // own task.
 // fallow-ignore-file complexity
+import { failCommand, finishCommand } from "../utils/commandResult.js";
 import { defineCommand, runCommand } from "citty";
 import type { Example } from "./_examples.js";
 
@@ -404,7 +405,7 @@ async function handleVideoFile(
         });
         if (clack.isCancel(transcode)) {
           clack.cancel("Setup cancelled.");
-          process.exit(0);
+          finishCommand(0);
         }
         shouldTranscode = transcode === "yes";
       }
@@ -708,7 +709,7 @@ export default defineCommand({
           `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${args.name ?? "my-video"} --example "${args.template}"`,
         ),
       );
-      process.exit(1);
+      failCommand();
     }
     if (args["video-legacy"] !== undefined) {
       console.error(
@@ -716,7 +717,7 @@ export default defineCommand({
           `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${args.name ?? "my-video"} --video "${args["video-legacy"]}"`,
         ),
       );
-      process.exit(1);
+      failCommand();
     }
     const exampleFlag = args.example;
     const videoFlag = args.video;
@@ -759,7 +760,7 @@ export default defineCommand({
               `(or aliases 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square).`,
           ),
         );
-        process.exit(1);
+        failCommand();
       }
     }
 
@@ -773,12 +774,12 @@ export default defineCommand({
 
       if (existsSync(destDir) && readdirSync(destDir).length > 0) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
-        process.exit(1);
+        failCommand();
       }
 
       if (videoFlag && audioFlag) {
         console.error(c.error("Cannot use --video and --audio together"));
-        process.exit(1);
+        failCommand();
       }
 
       // Validate source files before creating destDir so a failed run does
@@ -787,12 +788,12 @@ export default defineCommand({
       const videoPath = videoFlag ? resolve(videoFlag) : undefined;
       if (videoPath && !existsSync(videoPath)) {
         console.error(c.error(`Video file not found: ${videoFlag}`));
-        process.exit(1);
+        failCommand();
       }
       const audioPath = audioFlag ? resolve(audioFlag) : undefined;
       if (audioPath && !existsSync(audioPath)) {
         console.error(c.error(`Audio file not found: ${audioFlag}`));
-        process.exit(1);
+        failCommand();
       }
 
       mkdirSync(destDir, { recursive: true });
@@ -858,7 +859,7 @@ export default defineCommand({
           ),
         );
         console.error(c.dim("Use --example blank for offline use."));
-        process.exit(1);
+        failCommand();
       }
       trackInitTemplate(templateId, { tailwind });
       const transcriptFile = resolve(destDir, "transcript.json");
@@ -930,7 +931,7 @@ export default defineCommand({
       });
       if (clack.isCancel(nameResult)) {
         clack.cancel("Setup cancelled.");
-        process.exit(0);
+        finishCommand(0);
       }
       name = nameResult;
     }
@@ -944,7 +945,7 @@ export default defineCommand({
       });
       if (clack.isCancel(overwrite) || !overwrite) {
         clack.cancel("Setup cancelled.");
-        process.exit(0);
+        finishCommand(0);
       }
     }
 
@@ -958,7 +959,7 @@ export default defineCommand({
       if (!existsSync(videoPath)) {
         clack.log.error(`File not found: ${videoFlag}`);
         clack.cancel("Setup cancelled.");
-        process.exit(1);
+        failCommand();
       }
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = videoPath;
@@ -970,7 +971,7 @@ export default defineCommand({
       if (!existsSync(audioPath)) {
         clack.log.error(`File not found: ${audioFlag}`);
         clack.cancel("Setup cancelled.");
-        process.exit(1);
+        failCommand();
       }
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
@@ -1044,7 +1045,7 @@ export default defineCommand({
       });
       if (clack.isCancel(templateResult)) {
         clack.cancel("Setup cancelled.");
-        process.exit(0);
+        finishCommand(0);
       }
       templateId = templateResult;
     }
@@ -1075,7 +1076,7 @@ export default defineCommand({
       clack.log.error(
         `${err instanceof Error ? err.message : err}\n${c.dim("Use --example blank for offline use.")}`,
       );
-      process.exit(1);
+      failCommand();
     }
     trackInitTemplate(templateId, { tailwind });
 

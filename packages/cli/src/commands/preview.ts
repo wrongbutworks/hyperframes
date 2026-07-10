@@ -1,3 +1,4 @@
+import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
@@ -222,7 +223,7 @@ export default defineCommand({
     // Validation: --user-data-dir requires --browser-path
     if (args["user-data-dir"] && !args["browser-path"]) {
       clack.log.error("--user-data-dir requires --browser-path");
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
     // Validation: --remote-debugging-port deps
@@ -233,7 +234,7 @@ export default defineCommand({
     });
     if (depsError) {
       clack.log.error(depsError);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -247,7 +248,7 @@ export default defineCommand({
       );
     } catch (err) {
       clack.log.error((err as Error).message);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -305,7 +306,7 @@ function printSelectionFailure(code: string, message: string, json: boolean): vo
   } else {
     clack.log.error(message);
   }
-  process.exitCode = 1;
+  setCommandExitCode(1);
 }
 
 function previewServerPayload(server: {
@@ -859,7 +860,7 @@ async function runEmbeddedMode(
     console.error();
     console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("bun run build")}`);
     console.error();
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -880,7 +881,7 @@ async function runEmbeddedMode(
     console.error();
     console.error(`  ${(err as Error).message}`);
     console.error();
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -943,7 +944,7 @@ async function runEmbeddedMode(
       // Hard deadline: if cleanup hangs (e.g. dead Chrome never responds to
       // browser.close()), force exit. Armed before awaiting cleanup so it
       // can't be blocked by a stuck drainBrowserPool().
-      setTimeout(() => process.exit(0), 3000).unref();
+      setTimeout(() => requestCliExit(0), 3000).unref();
 
       // Kill ffmpeg first (sync, fast), then drain browsers (async, slower).
       const cleanup = async () => {

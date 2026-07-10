@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -92,7 +93,7 @@ export default defineCommand({
       console.error();
       console.error(`  ${(err as Error).message}`);
       console.error();
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
   },

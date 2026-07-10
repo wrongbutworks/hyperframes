@@ -1,3 +1,4 @@
+import { setCommandExitCode, CliResultSignal } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import { execFileSync, spawn } from "node:child_process";
 import * as clack from "@clack/prompts";
@@ -78,7 +79,8 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
     });
     child.on("close", (code, signal) => {
       if (code === 0) resolve();
-      else if (signal === "SIGINT" || code === 130) process.exit(0);
+      else if (signal === "SIGINT" || code === 130)
+        reject(new CliResultSignal({ exitCode: 0, kind: "success", presented: true }));
       else reject(new Error(`npx ${args.join(" ")} exited with code ${code}`));
     });
     child.on("error", reject);
@@ -557,7 +559,7 @@ const checkCommand = defineCommand({
 
     // Exit non-zero when installed skills are stale, so agents and CI can gate:
     //   hyperframes skills check || npx hyperframes skills update
-    if (result.updateAvailable) process.exitCode = 1;
+    if (result.updateAvailable) setCommandExitCode(1);
   },
 });
 
@@ -655,7 +657,7 @@ const updateCommand = defineCommand({
     const { requested, rejected } = requestedNamesFrom(args._ ?? []);
     if (rejected.length) {
       reportUpdateFailure(`Invalid skill name(s): ${rejected.join(", ")}`, args.json === true);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 
@@ -685,7 +687,7 @@ const updateCommand = defineCommand({
       reportUpdate(result, requested, args.json === true);
     } catch (err) {
       reportUpdateFailure(`Update failed: ${(err as Error).message}`, args.json === true);
-      process.exitCode = 1;
+      setCommandExitCode(1);
       return;
     }
 

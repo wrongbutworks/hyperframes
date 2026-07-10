@@ -1,3 +1,4 @@
+import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
@@ -92,7 +93,7 @@ function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
   // notice via isSafeVersion.
   if (!isSafeVersion(result.latest)) {
     clack.outro(c.dim("Refusing to install: unexpected version string from npm registry."));
-    process.exitCode = 1;
+    setCommandExitCode(1);
     return;
   }
 
@@ -153,6 +154,6 @@ export function runDetectedInstall(
   } catch {
     clack.outro(c.dim("Install failed. Try running manually:"));
     console.log(`   ${c.accent(displayCmd)}`);
-    process.exitCode = 1;
+    setCommandExitCode(1);
   }
 }
