@@ -1,5 +1,6 @@
 import { describe, expect, it, mock } from "bun:test";
 import { getCaptureStageBrowserConsole } from "../captureStageError.js";
+import { createCapturePlan } from "../capturePlan.js";
 
 type MinimalEngineConfig = {
   forceScreenshot: boolean;
@@ -136,14 +137,21 @@ function createInput(cfg: MinimalEngineConfig) {
     },
     totalFrames: 0,
     cfg,
-    forceScreenshot: false,
+    plan: createCapturePlan({
+      workerCount: 1,
+      forceScreenshot: false,
+      useStreamingEncode: true,
+      useLayeredComposite: false,
+      usePageSideCompositing: false,
+      hasHdrContent: false,
+      needsAlpha: false,
+    }),
     log: {
       error: () => {},
       warn: () => {},
       info: () => {},
       debug: () => {},
     },
-    workerCount: 1,
     probeSession: null,
     outputFormat: "mp4",
     streamingEncoderOptions: { fps: { num: 30, den: 1 }, width: 1920, height: 1080 },
@@ -204,10 +212,18 @@ describe("runCaptureStage", () => {
     try {
       await runCaptureStage({
         ...createInput(cfg),
+        plan: createCapturePlan({
+          workerCount: 1,
+          forceScreenshot: false,
+          useStreamingEncode: false,
+          useLayeredComposite: false,
+          usePageSideCompositing: false,
+          hasHdrContent: false,
+          needsAlpha: false,
+        }),
         videoOnlyPath: undefined,
         outputFormat: undefined,
         streamingEncoderOptions: undefined,
-        needsAlpha: false,
         captureAttempts: [],
       });
     } catch (error) {
@@ -243,7 +259,15 @@ describe("runCaptureHdrStage", () => {
           duration: 1,
         },
         cfg: { forceScreenshot: true },
-        forceScreenshot: true,
+        plan: createCapturePlan({
+          workerCount: 1,
+          forceScreenshot: true,
+          useStreamingEncode: false,
+          useLayeredComposite: true,
+          usePageSideCompositing: false,
+          hasHdrContent: false,
+          needsAlpha: false,
+        }),
         log: {
           error: () => {},
           warn: () => {},
@@ -292,7 +316,6 @@ describe("runCaptureHdrStage", () => {
           videoExtractionFailures: 0,
           imageDecodeFailures: 0,
         },
-        workerCount: 1,
         abortSignal: undefined,
         assertNotAborted: () => {},
       });
