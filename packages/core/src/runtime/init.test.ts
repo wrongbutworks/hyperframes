@@ -1756,6 +1756,26 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
   });
 
+  it("keeps a usable bound timeline when the registry entry is replaced", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-start="0" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    const originalTimeline = createMockTimeline(5);
+    window.__timelines = { root: originalTimeline };
+    initSandboxRuntimeModular();
+
+    const replacementTimeline = createMockTimeline(8);
+    window.__timelines.root = replacementTimeline;
+    for (let frame = 0; frame < 60; frame += 1) raf.step(16);
+
+    expect(window.__player?.getDuration()).toBe(5);
+  });
+
   // applyClipLayout force-absolutizes authored root-level timed clips so they
   // stack as overlays. But in Studio/preview the runtime also stamps `data-start`
   // onto ID'd / GSAP-targeted *flow* children (a <header>/<footer> in a column)
