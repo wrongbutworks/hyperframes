@@ -989,7 +989,13 @@ async function runDetachedParent(
     } else {
       let tail = "";
       try {
-        tail = readFileSync(paths.log, "utf-8").trimEnd().split("\n").slice(-12).join("\n");
+        // Open once and read through the descriptor — no path re-check to race.
+        const tailFd = openSync(paths.log, "r");
+        try {
+          tail = readFileSync(tailFd, "utf-8").trimEnd().split("\n").slice(-12).join("\n");
+        } finally {
+          closeSync(tailFd);
+        }
       } catch {
         // No log yet — the child died before writing anything.
       }
