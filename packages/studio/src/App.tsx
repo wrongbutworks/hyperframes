@@ -176,6 +176,7 @@ export function StudioApp() {
     timelineElements,
     showToast,
     writeProjectFile: fileManager.writeProjectFile,
+    observeProjectFileVersion: fileManager.observeProjectFileVersion,
     recordEdit: editHistory.recordEdit,
     domEditSaveTimestampRef,
     reloadPreview,

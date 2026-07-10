@@ -1,5 +1,7 @@
 import type { EditHistoryKind } from "./editHistory";
 
+type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
+
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
   label: string;
@@ -7,7 +9,7 @@ interface SaveProjectFilesWithHistoryInput {
   coalesceKey?: string;
   files: Record<string, string>;
   readFile: (path: string) => Promise<string>;
-  writeFile: (path: string, content: string) => Promise<void>;
+  writeFile: ProjectFileWriter;
   recordEdit: (entry: {
     label: string;
     kind: EditHistoryKind;
@@ -39,7 +41,7 @@ export async function saveProjectFilesWithHistory({
   const writtenPaths: string[] = [];
   try {
     for (const path of changedPaths) {
-      await writeFile(path, snapshots[path].after);
+      await writeFile(path, snapshots[path].after, snapshots[path].before);
       writtenPaths.push(path);
     }
 
@@ -47,7 +49,7 @@ export async function saveProjectFilesWithHistory({
   } catch (error) {
     try {
       for (const path of writtenPaths.reverse()) {
-        await writeFile(path, snapshots[path].before);
+        await writeFile(path, snapshots[path].before, snapshots[path].after);
       }
     } catch (rollbackError) {
       throw new AggregateError(

@@ -23,6 +23,11 @@ import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
+  createWriteToken,
+  fileContentVersion,
+  recordFileWriteReceipt,
+} from "../helpers/fileVersion.js";
+import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
   type UnsafeMutationValue,
@@ -1594,7 +1599,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const content = readFileSync(res.absPath, "utf-8");
-    return c.json({ filename: res.filePath, content });
+    const version = fileContentVersion(content);
+    c.header("ETag", version);
+    return c.json({ filename: res.filePath, content, version });
   });
 
   // ── Write (overwrite) ──
@@ -1603,15 +1610,47 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter);
     if ("error" in res) return res.error;
 
-    ensureDir(res.absPath);
     const body = await c.req.text();
+    const existed = existsSync(res.absPath);
+    const currentContent = existed ? readFileSync(res.absPath, "utf-8") : null;
+    const currentVersion = currentContent === null ? null : fileContentVersion(currentContent);
+    const expectedVersion = c.req.header("If-Match")?.trim() ?? null;
+    const createOnly = c.req.header("If-None-Match")?.trim() === "*";
+    if (expectedVersion === null && !createOnly) {
+      return c.json(
+        { error: "precondition required", path: res.filePath, currentVersion, currentContent },
+        428,
+      );
+    }
+    if (
+      (createOnly && existed) ||
+      (expectedVersion !== null && expectedVersion !== currentVersion)
+    ) {
+      return c.json(
+        {
+          error: "file conflict",
+          path: res.filePath,
+          currentVersion,
+          currentContent,
+        },
+        409,
+      );
+    }
+
+    ensureDir(res.absPath);
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
     writeFileSync(res.absPath, body, "utf-8");
+    const version = fileContentVersion(body);
+    const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+    recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken });
+    c.header("ETag", version);
 
     return c.json({
       ok: true,
       path: res.filePath,
+      version,
+      writeToken,
       backupPath: backupPathForResponse(res.project.dir, backup.backupPath),
     });
   });
@@ -1711,17 +1750,28 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       fallbackTiming,
     );
     if (!result.matched) {
-      return c.json({ ok: false, changed: false, content: originalContent, path: ctx.filePath });
+      const version = fileContentVersion(originalContent);
+      c.header("ETag", version);
+      return c.json({
+        ok: false,
+        changed: false,
+        content: originalContent,
+        path: ctx.filePath,
+        version,
+      });
     }
     const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
     if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
     writeFileSync(ctx.absPath, result.html, "utf-8");
+    const version = fileContentVersion(result.html);
+    c.header("ETag", version);
     return c.json({
       ok: true,
       changed: true,
       content: result.html,
       newId: result.newId,
       path: ctx.filePath,
+      version,
       backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
     });
   });
@@ -2100,11 +2150,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       after: newHtml,
       scriptText: newScript,
       path: res.filePath,
+      version: fileContentVersion(newHtml),
       backupPath,
     };
     if (typeof result !== "string" && result.skippedSelectors.length > 0) {
       responsePayload.skippedSelectors = result.skippedSelectors;
     }
+    c.header("ETag", responsePayload.version as string);
     return c.json(responsePayload);
   });
 }

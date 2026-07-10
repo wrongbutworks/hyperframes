@@ -222,7 +222,7 @@ describe("sdkCutoverPersist", () => {
       target: "hf-abc",
       styles: { color: "red", opacity: "0.5" },
     });
-    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html></html>");
+    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html></html>", "before");
     expect(deps.reloadPreview).toHaveBeenCalled();
   });
 
@@ -616,7 +616,11 @@ describe("sdkDeletePersist", () => {
     const result = await sdkDeletePersist("hf-abc", "before", "/comp.html", session, deps);
     expect(result.status).toBe("committed");
     expect(session!.removeElement).toHaveBeenCalledWith("hf-abc");
-    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+    expect(deps.writeProjectFile).toHaveBeenCalledWith(
+      "/comp.html",
+      "<html>after</html>",
+      "before",
+    );
   });
 
   it("records edit history with before/after diff", async () => {
@@ -701,7 +705,11 @@ describe("sdkTimingPersist", () => {
       duration: 5,
       trackIndex: 1,
     });
-    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+    expect(deps.writeProjectFile).toHaveBeenCalledWith(
+      "/comp.html",
+      "<html>after</html>",
+      "<html>before</html>",
+    );
   });
 
   it("captures before-state before setTiming dispatch", async () => {
@@ -927,7 +935,11 @@ describe("sdkGsapTweenPersist", () => {
       "hf-box",
       expect.objectContaining({ method: "to" }),
     );
-    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+    expect(deps.writeProjectFile).toHaveBeenCalledWith(
+      "/comp.html",
+      "<html>after</html>",
+      "<html>before</html>",
+    );
   });
 
   it("returns false for kind=add when element not found", async () => {
@@ -1031,7 +1043,11 @@ describe("sdkGsapKeyframePersist", () => {
       position: 50,
       value: { opacity: 0.5 },
     });
-    expect(deps.writeProjectFile).toHaveBeenCalledWith("/comp.html", "<html>after</html>");
+    expect(deps.writeProjectFile).toHaveBeenCalledWith(
+      "/comp.html",
+      "<html>after</html>",
+      "<html>before</html>",
+    );
     expect(deps.reloadPreview).toHaveBeenCalled();
   });
 
