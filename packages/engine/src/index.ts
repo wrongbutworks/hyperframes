@@ -106,6 +106,13 @@ export {
   type BeforeCaptureHook,
   type DiscardWarmupInnerCapture,
 } from "./services/frameCapture.js";
+export {
+  CaptureFailure,
+  classifyCaptureFailure,
+  isFatalCaptureFailure,
+  type CaptureFailureKind,
+  type CaptureWorkerDiagnostic,
+} from "./services/captureFailure.js";
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export {

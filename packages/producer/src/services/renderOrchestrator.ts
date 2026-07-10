@@ -72,8 +72,8 @@ import {
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
   scaleProtocolTimeoutForComposition,
+  classifyCaptureFailure,
   isMemoryExhaustionError,
-  isTransientBrowserError,
   isDrawElementVerificationError,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
@@ -719,12 +719,9 @@ export function resetCaptureAttemptProgress(job: { framesRendered?: number }): v
 
 export function isRecoverableParallelCaptureError(error: unknown): boolean {
   const message = normalizeErrorMessage(error);
-  return (
-    message.includes("[Parallel] Capture failed") &&
-    /Runtime\.callFunctionOn timed out|HeadlessExperimental\.beginFrame timed out|Waiting failed|timeout exceeded|timed out|Navigation timeout|Protocol error|Target closed/i.test(
-      message,
-    )
-  );
+  if (!message.includes("[Parallel] Capture failed")) return false;
+  const kind = classifyCaptureFailure(error).kind;
+  return kind === "transient_browser" || kind === "protocol_timeout";
 }
 
 /**
@@ -898,11 +895,12 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       missingRanges = remaining;
       attempt++;
     } catch (error) {
+      const failure = classifyCaptureFailure(error, { signal: options.abortSignal });
       // A cancelled render tears the browser down, which surfaces as a
       // transient-looking `Target closed`. Rethrow immediately so cancellation
       // never burns a retry (or logs a misleading transient-failure warning) —
       // the caller's abort handling owns cancellation.
-      if (options.abortSignal?.aborted) {
+      if (failure.kind === "cancelled") {
         throw error;
       }
       const remaining = findMissingFrameRanges(
@@ -931,7 +929,7 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       // retry for the session-init phase they share.
       if (
         options.allowRetry &&
-        isTransientBrowserError(error) &&
+        failure.kind === "transient_browser" &&
         transientRetriesUsed < MAX_TRANSIENT_CAPTURE_RETRIES
       ) {
         transientRetriesUsed++;
