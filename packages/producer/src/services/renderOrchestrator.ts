@@ -1503,6 +1503,10 @@ export async function executeRenderJob(
     // render already executing in the same process. Threading this as a
     // local instead closes that cross-talk, not just the sequential leak.
     let deParallelStreamForced = false;
+    // Per-render (not process-global) signal that the NON-DE parallel-stream
+    // router fired — same threading discipline as deParallelStreamForced
+    // (see that flag's comment for why this must never be an env mutation).
+    let captureParallelStreamForced = false;
     let deSelfVerifyFallback = false;
     let deFallbackReason: string | undefined;
     let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
@@ -2025,6 +2029,39 @@ export async function executeRenderJob(
       deParallelRouter: deParallelRouter ?? "none",
     });
 
+    // Non-DE parallel-streaming router — see shouldStreamParallelCapture.
+    // Mutually exclusive with the DE inversion/router above by construction
+    // (both DE predicates require useDrawElement; this requires its negation).
+    const captureParallelStreamEligible = shouldStreamParallelCapture({
+      routerEnabled: process.env.HF_CAPTURE_PARALLEL_STREAM === "true",
+      workerCount,
+      useDrawElement: cfg.useDrawElement,
+      outputFormat,
+      streamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      layeredOrEffectRoute: hasHdrContent || compiled.hasShaderTransitions,
+    });
+    if (captureParallelStreamEligible) {
+      captureParallelStreamForced = true;
+      // Which mode will stream: the engine picks beginframe only on Linux with
+      // headless-shell and no forced screenshot (frameCapture.ts preMode);
+      // everything else is screenshot. Recorded for telemetry cohorting.
+      const captureParallelStream =
+        process.platform === "linux" && !captureForceScreenshot ? "beginframe" : "screenshot";
+      log.info(
+        `[Render] Parallel ${captureParallelStream} capture will stream to the encoder ` +
+          `(interleaved, ${workerCount} workers) instead of the disk path. ` +
+          "Set HF_CAPTURE_PARALLEL_STREAM=false to disable.",
+      );
+      updateCaptureObservability({ captureParallelStream });
+      // NOTE: no string data on the checkpoint — RenderObservationData string
+      // values are dropped unless the key is in observability.ts's
+      // ALLOWED_STRING_DATA_KEYS allow-list. The message carries the detail.
+      observability.checkpoint(
+        "worker_resolution",
+        `parallel ${captureParallelStream} capture routed to streaming`,
+      );
+    }
+
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
       await closeCaptureSession(probeSession);
@@ -2041,7 +2078,7 @@ export async function executeRenderJob(
       outputFormat,
       workerCount,
       job.duration,
-      deParallelStreamForced,
+      deParallelStreamForced || captureParallelStreamForced,
     );
     log.info("streaming-encode gate", {
       enabled: useStreamingEncode,
@@ -2284,7 +2321,7 @@ export async function executeRenderJob(
                 workerCount,
                 probeSession,
                 outputFormat,
-                forceParallelStream: deParallelStreamForced,
+                forceParallelStream: deParallelStreamForced || captureParallelStreamForced,
                 streamingEncoderOptions: {
                   fps: job.config.fps,
                   width,
