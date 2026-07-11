@@ -262,6 +262,22 @@ describe("render telemetry events", () => {
       }),
     );
   });
+
+  it("carries capture_parallel_stream on render_error via the shared payload", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      errorMessage: "worker crashed",
+      captureParallelStream: "beginframe",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({ capture_parallel_stream: "beginframe" }),
+      undefined,
+    );
+  });
 });
 
 describe("trackRenderFeedback", () => {

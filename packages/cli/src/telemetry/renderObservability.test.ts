@@ -38,3 +38,17 @@ describe("renderObservabilityTelemetryPayload — render-reliability counters", 
     expect(payload.captureMemoryExhaustionDetected).toBeUndefined();
   });
 });
+
+describe("renderObservabilityTelemetryPayload — non-DE parallel-stream router", () => {
+  it("maps the router outcome", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ captureParallelStream: "beginframe" }),
+    );
+    expect(payload.captureParallelStream).toBe("beginframe");
+  });
+
+  it("stays undefined when the router never fired", () => {
+    const payload = renderObservabilityTelemetryPayload(makeSummary({}));
+    expect(payload.captureParallelStream).toBeUndefined();
+  });
+});

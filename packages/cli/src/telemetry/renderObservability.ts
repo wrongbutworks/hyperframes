@@ -40,6 +40,7 @@ export function renderObservabilityTelemetryPayload(
     capturePlayerReadyTimeoutMs: capture.playerReadyTimeoutMs,
     captureTransientRetries: capture.transientRetries,
     captureMemoryExhaustionDetected: capture.memoryExhaustionDetected,
+    captureParallelStream: capture.captureParallelStream,
     observabilityExtractVideoCount: extraction?.videoCount,
     observabilityExtractedVideoCount: extraction?.extractedVideoCount,
     observabilityExtractTotalFrames: extraction?.totalFramesExtracted,
