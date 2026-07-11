@@ -1162,6 +1162,54 @@ export function resolveParallelRouterRetryPlan(args: {
   };
 }
 
+/**
+ * Parallel-streaming router for NON-drawElement capture (screenshot on
+ * macOS/Windows/forced-screenshot, BeginFrame on Linux): should this
+ * multi-worker render stream captured frame buffers straight into the single
+ * ffmpeg stdin encoder (interleaved distribution + ordered reorder-buffer
+ * writer — the PR #2056 machinery) instead of the parallel disk path (workers
+ * write JPEGs, a separate sequential encode pass reads them back)?
+ *
+ * Measured motivation (2026-07-10, macOS SS W3): the disk path's encode is a
+ * purely additive tail (~27% of wall clock on a 3,600-frame comp). Streaming
+ * overlapped it for 1.29x on a uniform-cost comp and was a wash (not a
+ * regression) on a 39%-static bimodal comp — the interleaved writer's
+ * near-lockstep coupling eats the encode win when frame costs are bimodal.
+ * v1 accepts the wash; static-aware routing is a documented follow-up.
+ *
+ * Unlike the DE router this deliberately does NOT require auto-resolved
+ * workers: streaming doesn't change the worker count, so an explicit
+ * `--workers 3` should benefit too. It requires !useDrawElement
+ * (post-resolveConfig — always true on Linux): DE parallel renders belong to
+ * the DE parallel router (HF_DE_PARALLEL_ROUTER) with its self-verify
+ * machinery; both DE predicates independently require useDrawElement, making
+ * the two routers mutually exclusive by construction.
+ */
+export function shouldStreamParallelCapture(args: {
+  /** HF_CAPTURE_PARALLEL_STREAM === "true" — kill switch, default OFF. */
+  routerEnabled: boolean;
+  workerCount: number;
+  /** cfg.useDrawElement AFTER resolveConfig clamps. */
+  useDrawElement: boolean;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  /** shouldUseStreamingEncode(cfg, format, 1, duration) at the call site —
+   * carries the enableStreamingEncode/format/duration-cap gates. */
+  streamingOk: boolean;
+  /** HDR layered composite or shader transitions — bespoke pipelines
+   * (including page-side compositing, which only engages when
+   * hasShaderTransitions) that never stream. */
+  layeredOrEffectRoute: boolean;
+}): boolean {
+  return (
+    args.routerEnabled &&
+    args.workerCount > 1 &&
+    !args.useDrawElement &&
+    args.outputFormat === "mp4" &&
+    args.streamingOk &&
+    !args.layeredOrEffectRoute
+  );
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
