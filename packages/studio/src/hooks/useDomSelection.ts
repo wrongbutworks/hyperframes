@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { TimelineElement } from "../player";
+import type { SelectElementOptions, TimelineElement } from "../player";
+import { usePlayerStore } from "../player";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -47,7 +48,7 @@ export interface UseDomSelectionParams {
   captionEditMode: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
-  setSelectedTimelineElementId: (id: string | null) => void;
+  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
@@ -126,11 +127,16 @@ export function useDomSelection({
 
   // ── Refs ──
 
+  const rightPanelTabRef = useRef(rightPanelTab);
+  rightPanelTabRef.current = rightPanelTab;
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const activeGroupElementRef = useRef<HTMLElement | null>(activeGroupElement);
   const compositionIdentityRef = useRef({ activeCompPath, projectId });
+  // Monotonic token so a rapid A->B timeline-clip select can't let A's slower async
+  // resolution land after B and restore the wrong selection.
+  const timelineSelectSeqRef = useRef(0);
 
   // Keep refs in sync with state
   domEditSelectionRef.current = domEditSelection;
@@ -205,7 +211,11 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          setRightPanelTab("design");
+          // Keep the Variables tab in place — selecting elements is part of the bind
+          // flow there; yanking to Design would lose the context.
+          if (rightPanelTabRef.current !== "variables") {
+            setRightPanelTab("design");
+          }
         }
         const nextSelectedTimelineId =
           findMatchingTimelineElementId(nextSelection, timelineElements) ??
@@ -214,7 +224,12 @@ export function useDomSelection({
             timelineElements,
             nextSelection.sourceFile || "index.html",
           );
-        setSelectedTimelineElementId(nextSelectedTimelineId);
+        // Late marquee inspector-open notify: a primary already in the live
+        // multi-selection must not collapse the group; a non-member click does.
+        const inSet =
+          nextSelectedTimelineId !== null &&
+          usePlayerStore.getState().selectedElementIds.has(nextSelectedTimelineId);
+        setSelectedTimelineElementId(nextSelectedTimelineId, inSet ? { preserveSet: true } : undefined);
         return;
       }
 
@@ -360,12 +375,15 @@ export function useDomSelection({
   const handleTimelineElementSelect = useCallback(
     async (element: TimelineElement | null) => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
+      const seq = ++timelineSelectSeqRef.current;
       if (!element) {
         applyDomSelection(null, { revealPanel: false });
         return;
       }
 
       const selection = await buildDomSelectionForTimelineElement(element);
+      // A newer selection superseded this one while we were resolving — drop the stale result.
+      if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
     },
     [applyDomSelection, buildDomSelectionForTimelineElement],
