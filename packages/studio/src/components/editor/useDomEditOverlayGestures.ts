@@ -41,6 +41,7 @@ import {
   hasDomEditRotationChanged,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
+  type ResizeHandle,
 } from "./domEditOverlayGestures";
 import {
   startGesture as _startGesture,
@@ -80,7 +81,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
   const startGesture = (
     kind: GestureKind,
     e: React.PointerEvent<HTMLElement>,
-    options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+    options?: {
+      selection?: DomEditSelection;
+      rect?: OverlayRect | null;
+      resizeHandle?: ResizeHandle;
+    },
   ) => _startGesture(kind, e, opts, options);
 
   // fallow-ignore-next-line complexity
